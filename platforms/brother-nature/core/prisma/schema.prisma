@@ -1,0 +1,229 @@
+// Prisma Schema for Brother Nature MVP
+// Database: PostgreSQL
+// Focus: User, Community, Post (threaded), SynthesisArtifact
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - Authentication and profile
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  username          String   @unique
+  passwordHash      String
+
+  // Profile
+  displayName       String?
+  bio               String?
+  location          String?
+
+  // XRPL Integration
+  xrplWalletAddress String?  @unique
+
+  // Roles & Permissions
+  role              UserRole @default(USER)
+  isVerified        Boolean  @default(false)
+
+  // Timestamps
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  lastLoginAt       DateTime?
+
+  // Relations
+  posts             Post[]
+  communities       CommunityMember[]
+  synthesisCreated  SynthesisArtifact[] @relation("SynthesisCreator")
+  tokenRewards      TokenReward[]
+
+  @@index([email])
+  @@index([username])
+  @@index([xrplWalletAddress])
+}
+
+enum UserRole {
+  USER      // Regular community member
+  STEWARD   // Can trigger synthesis, moderate
+  ADMIN     // Full platform access
+}
+
+// Community model - Geographic and topic-based organization
+model Community {
+  id          String   @id @default(cuid())
+
+  // Geographic hierarchy
+  country     String   // e.g., "aus", "nz", "usa"
+  region      String?  // e.g., "deniliquin", "riverina", "canterbury"
+  category    String?  // e.g., "soil-health", "water-management"
+
+  // Metadata
+  name        String
+  description String?
+  slug        String   @unique  // URL-friendly: "aus-deniliquin-soil-health"
+
+  // Settings
+  isActive    Boolean  @default(true)
+
+  // Timestamps
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  posts       Post[]
+  members     CommunityMember[]
+
+  @@unique([country, region, category])
+  @@index([slug])
+  @@index([country, region])
+}
+
+// Community Membership - Many-to-many between User and Community
+model CommunityMember {
+  id          String   @id @default(cuid())
+
+  userId      String
+  communityId String
+
+  role        MemberRole @default(MEMBER)
+  joinedAt    DateTime   @default(now())
+
+  // Relations
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, communityId])
+  @@index([userId])
+  @@index([communityId])
+}
+
+enum MemberRole {
+  MEMBER      // Regular participant
+  MODERATOR   // Can moderate posts in community
+  STEWARD     // Can trigger synthesis for community
+}
+
+// Post model - Threaded conversations
+model Post {
+  id            String   @id @default(cuid())
+
+  // Content
+  title         String?  // Only for top-level posts
+  content       String   @db.Text
+  contentType   String   @default("markdown")  // markdown, plain, html
+
+  // Threading
+  parentPostId  String?  // null for top-level, references parent for replies
+  parentPost    Post?    @relation("PostReplies", fields: [parentPostId], references: [id], onDelete: Cascade)
+  replies       Post[]   @relation("PostReplies")
+  threadDepth   Int      @default(0)  // 0 for top-level, increments with nesting
+
+  // Author & Community
+  authorId      String
+  author        User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  communityId   String
+  community     Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+
+  // Metadata
+  isEdited      Boolean  @default(false)
+  isPinned      Boolean  @default(false)
+  isLocked      Boolean  @default(false)
+
+  // Timestamps
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  synthesisArtifacts SynthesisArtifact[] @relation("ThreadSynthesis")
+
+  @@index([communityId, createdAt])
+  @@index([authorId])
+  @@index([parentPostId])
+  @@index([createdAt])
+}
+
+// SynthesisArtifact model - AI-generated summaries of conversations
+model SynthesisArtifact {
+  id              String   @id @default(cuid())
+
+  // Synthesis content
+  title           String
+  summary         String   @db.Text  // The synthesized summary
+  keyPoints       String[] // Array of key insights
+
+  // Metadata
+  synthesisType   String   @default("thread")  // thread, community, topic
+  aiModel         String?  // e.g., "claude-3.5-sonnet"
+
+  // References
+  threadRootId    String?  // Reference to the root post of the synthesized thread
+  threadRoot      Post?    @relation("ThreadSynthesis", fields: [threadRootId], references: [id], onDelete: SetNull)
+
+  // Creator (steward who triggered synthesis)
+  createdById     String
+  createdBy       User     @relation("SynthesisCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([threadRootId])
+  @@index([createdById])
+  @@index([createdAt])
+}
+
+// TokenReward model - Tracks XRPL token distributions
+model TokenReward {
+  id                String   @id @default(cuid())
+
+  // Recipient
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Token details
+  tokenType         TokenType // EXPLORER, REGEN, or GUARDIAN
+  amount            String   // Amount in token's smallest unit (decimal as string)
+
+  // XRPL transaction details
+  xrplTxHash        String?  @unique // XRPL transaction hash
+  xrplDestination   String   // Recipient's XRPL address
+  xrplIssuer        String   // Token issuer's XRPL address
+  xrplCurrency      String   // Currency code (EXP, RGN, GRD)
+
+  // Reason for reward
+  reason            String   // e.g., "Verified contribution in soil-health discussion"
+  postId            String?  // Related post if applicable
+
+  // Status tracking
+  status            RewardStatus @default(PENDING)
+  errorMessage      String?      // Error details if failed
+
+  // Timestamps
+  createdAt         DateTime @default(now())
+  processedAt       DateTime? // When the XRPL transaction was sent
+  confirmedAt       DateTime? // When the transaction was confirmed on XRPL
+
+  @@index([userId])
+  @@index([tokenType])
+  @@index([status])
+  @@index([createdAt])
+  @@index([xrplTxHash])
+}
+
+enum TokenType {
+  EXPLORER  // Discovery & Documentation
+  REGEN     // Restoration & Recovery
+  GUARDIAN  // Stewardship & Continuity
+}
+
+enum RewardStatus {
+  PENDING      // Queued for processing
+  PROCESSING   // Transaction being sent to XRPL
+  CONFIRMED    // Transaction confirmed on ledger
+  FAILED       // Transaction failed
+}

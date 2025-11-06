@@ -1,6 +1,7 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { triggerSynthesisSchema } from '../utils/validation';
 import { requireSteward } from '../middleware/auth';
+import { XRPLService } from '../services/xrpl.service';
 
 export default async function synthesisRoutes(fastify: FastifyInstance) {
   // Trigger synthesis for a thread (steward only)
@@ -74,12 +75,35 @@ export default async function synthesisRoutes(fastify: FastifyInstance) {
           },
         });
 
+        // Award EXPLORER tokens to the thread author for verified contribution
+        let rewardTxHash: string | null = null;
+        try {
+          const xrplService = new XRPLService(fastify.prisma);
+          rewardTxHash = await xrplService.rewardVerifiedContribution(
+            threadRoot.authorId,
+            body.threadRootId,
+            '10' // 10 EXPLORER tokens for verified contribution
+          );
+
+          fastify.log.info(`Rewarded ${threadRoot.author.username} with 10 EXPLORER tokens. TX: ${rewardTxHash}`);
+        } catch (rewardError: any) {
+          // Log error but don't fail the synthesis
+          fastify.log.error(`Failed to send token reward: ${rewardError.message}`);
+          // Token reward will remain in FAILED status in database
+        }
+
         return reply.status(201).send({
           artifact,
           metadata: {
             postsAnalyzed: threadPosts.length + 1, // +1 for root post
             threadDepth: Math.max(...threadPosts.map((p) => p.threadDepth), 0),
           },
+          reward: rewardTxHash ? {
+            txHash: rewardTxHash,
+            amount: '10',
+            tokenType: 'EXPLORER',
+            recipient: threadRoot.author.username,
+          } : null,
         });
       } catch (error: any) {
         if (error.name === 'ZodError') {

@@ -176,4 +176,153 @@ export default async function authRoutes(fastify: FastifyInstance) {
       }
     }
   );
+
+  // Link XRPL wallet to user account
+  fastify.post(
+    '/wallet/link',
+    { preHandler: authenticate },
+    async (request: FastifyRequest<{
+      Body: { xrplWalletAddress: string };
+    }>, reply: FastifyReply) => {
+      try {
+        const { xrplWalletAddress } = request.body;
+
+        // Basic validation of XRPL address format
+        if (!xrplWalletAddress || !xrplWalletAddress.startsWith('r')) {
+          return reply.status(400).send({
+            error: 'Validation Error',
+            message: 'Invalid XRPL wallet address format',
+          });
+        }
+
+        // Check if wallet is already linked to another user
+        const existingWallet = await fastify.prisma.user.findUnique({
+          where: { xrplWalletAddress },
+        });
+
+        if (existingWallet && existingWallet.id !== request.user!.id) {
+          return reply.status(409).send({
+            error: 'Conflict',
+            message: 'This wallet is already linked to another account',
+          });
+        }
+
+        // Update user's wallet address
+        const updatedUser = await fastify.prisma.user.update({
+          where: { id: request.user!.id },
+          data: { xrplWalletAddress },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            displayName: true,
+            xrplWalletAddress: true,
+          },
+        });
+
+        return reply.send({
+          message: 'XRPL wallet linked successfully',
+          user: updatedUser,
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Internal Server Error',
+          message: 'Failed to link wallet',
+        });
+      }
+    }
+  );
+
+  // Unlink XRPL wallet from user account
+  fastify.delete(
+    '/wallet/unlink',
+    { preHandler: authenticate },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const updatedUser = await fastify.prisma.user.update({
+          where: { id: request.user!.id },
+          data: { xrplWalletAddress: null },
+          select: {
+            id: true,
+            email: true,
+            username: true,
+            displayName: true,
+            xrplWalletAddress: true,
+          },
+        });
+
+        return reply.send({
+          message: 'XRPL wallet unlinked successfully',
+          user: updatedUser,
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Internal Server Error',
+          message: 'Failed to unlink wallet',
+        });
+      }
+    }
+  );
+
+  // Get user's token balances (if wallet is linked)
+  fastify.get(
+    '/wallet/balances',
+    { preHandler: authenticate },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const user = await fastify.prisma.user.findUnique({
+          where: { id: request.user!.id },
+          select: { xrplWalletAddress: true },
+        });
+
+        if (!user || !user.xrplWalletAddress) {
+          return reply.status(404).send({
+            error: 'Not Found',
+            message: 'No XRPL wallet linked to this account',
+          });
+        }
+
+        // Get token rewards history
+        const rewards = await fastify.prisma.tokenReward.findMany({
+          where: {
+            userId: request.user!.id,
+            status: 'CONFIRMED',
+          },
+          select: {
+            tokenType: true,
+            amount: true,
+            xrplTxHash: true,
+            reason: true,
+            confirmedAt: true,
+          },
+          orderBy: { confirmedAt: 'desc' },
+        });
+
+        // Calculate totals by token type
+        const totals = rewards.reduce((acc, reward) => {
+          const amount = parseFloat(reward.amount);
+          acc[reward.tokenType] = (acc[reward.tokenType] || 0) + amount;
+          return acc;
+        }, {} as Record<string, number>);
+
+        return reply.send({
+          walletAddress: user.xrplWalletAddress,
+          balances: {
+            EXPLORER: totals.EXPLORER || 0,
+            REGEN: totals.REGEN || 0,
+            GUARDIAN: totals.GUARDIAN || 0,
+          },
+          recentRewards: rewards.slice(0, 10), // Last 10 rewards
+        });
+      } catch (error) {
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Internal Server Error',
+          message: 'Failed to fetch balances',
+        });
+      }
+    }
+  );
 }

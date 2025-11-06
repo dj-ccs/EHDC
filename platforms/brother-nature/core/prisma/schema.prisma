@@ -39,6 +39,7 @@ model User {
   posts             Post[]
   communities       CommunityMember[]
   synthesisCreated  SynthesisArtifact[] @relation("SynthesisCreator")
+  tokenRewards      TokenReward[]
 
   @@index([email])
   @@index([username])
@@ -174,4 +175,55 @@ model SynthesisArtifact {
   @@index([threadRootId])
   @@index([createdById])
   @@index([createdAt])
+}
+
+// TokenReward model - Tracks XRPL token distributions
+model TokenReward {
+  id                String   @id @default(cuid())
+
+  // Recipient
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Token details
+  tokenType         TokenType // EXPLORER, REGEN, or GUARDIAN
+  amount            String   // Amount in token's smallest unit (decimal as string)
+
+  // XRPL transaction details
+  xrplTxHash        String?  @unique // XRPL transaction hash
+  xrplDestination   String   // Recipient's XRPL address
+  xrplIssuer        String   // Token issuer's XRPL address
+  xrplCurrency      String   // Currency code (EXP, RGN, GRD)
+
+  // Reason for reward
+  reason            String   // e.g., "Verified contribution in soil-health discussion"
+  postId            String?  // Related post if applicable
+
+  // Status tracking
+  status            RewardStatus @default(PENDING)
+  errorMessage      String?      // Error details if failed
+
+  // Timestamps
+  createdAt         DateTime @default(now())
+  processedAt       DateTime? // When the XRPL transaction was sent
+  confirmedAt       DateTime? // When the transaction was confirmed on XRPL
+
+  @@index([userId])
+  @@index([tokenType])
+  @@index([status])
+  @@index([createdAt])
+  @@index([xrplTxHash])
+}
+
+enum TokenType {
+  EXPLORER  // Discovery & Documentation
+  REGEN     // Restoration & Recovery
+  GUARDIAN  // Stewardship & Continuity
+}
+
+enum RewardStatus {
+  PENDING      // Queued for processing
+  PROCESSING   // Transaction being sent to XRPL
+  CONFIRMED    // Transaction confirmed on ledger
+  FAILED       // Transaction failed
 }

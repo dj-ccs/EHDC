@@ -1,4 +1,4 @@
-import { Client, Wallet, xrpToDrops, Payment, TrustSet, verify } from 'xrpl';
+import { Client, Wallet, Payment, TrustSet, verifySignature } from 'xrpl';
 import { PrismaClient, TokenType } from '@prisma/client';
 
 interface TokenConfig {
@@ -317,7 +317,7 @@ export class XRPLService {
   ): boolean {
     try {
       // Use XRPL's native signature verification
-      return verify(message, signature, publicKey);
+      return verifySignature(message, signature, publicKey);
     } catch (error: any) {
       console.error('Signature verification error:', error);
       return false;
@@ -332,17 +332,27 @@ export class XRPLService {
     await this.connect();
 
     try {
+      // Note: XRPL does not expose public keys directly via account_info
+      // Public keys must be provided by the user when signing messages
+      // This method is kept for potential future enhancement
+      // For now, users must provide their public key during verification
+
       const accountInfo = await this.client.request({
         command: 'account_info',
         account: address,
         ledger_index: 'validated',
       });
 
-      // Return the public key if available
-      // Note: Public key is only available if the account has made a transaction
-      return accountInfo.result.account_data.signer_lists?.[0]?.signers?.[0]?.account || null;
+      // Verify account exists
+      if (accountInfo.result.account_data) {
+        // Public key would need to be extracted from transaction history
+        // which is beyond the scope of this method
+        return null;
+      }
+
+      return null;
     } catch (error: any) {
-      console.error('Failed to fetch public key:', error);
+      console.error('Failed to fetch account info:', error);
       return null;
     }
   }

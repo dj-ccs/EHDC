@@ -166,26 +166,37 @@ Implement cryptographic signature-based verification using XRPL's native signing
 
 **Known Issues & Implementation Notes**:
 
-⚠️ **xrpl.js API Quirk - Function Name Confusion**
+⚠️ **xrpl.js Import Structure - Signature Verification**
 
-The xrpl.js library exports two similar functions for signature verification:
-- `verify(message, signature, publicKey)` - Takes 3 arguments (CORRECT for our use case)
-- `verifySignature(message, signature)` - Takes 1-2 arguments, different signature
+The xrpl.js library does NOT export `verify` as a top-level function in all environments.
+The signature verification function is available as a static method on the `Wallet` class.
 
-**Issue Encountered**: Initial TypeScript error (TS2305) incorrectly suggested `verify` was not exported,
-leading to a false correction to `verifySignature`. This caused TS2554 error ("Expected 1-2 arguments, but got 3").
+**Issue Encountered**:
+- TS2305 error: Module 'xrpl' has no exported member 'verify'
+- This is NOT an environmental false alarm - it's a genuine package structure issue
+- Multiple incorrect attempts were made trying different function names
 
-**Resolution**: The original `verify` function is correct. The TS2305 error was environmental.
+**CORRECT SOLUTION**:
+The verify function is accessed as a static method on the Wallet class:
+
+```typescript
+// CORRECT Import (do not import verify at top level)
+import { Wallet } from 'xrpl';
+
+// CORRECT Usage
+Wallet.verify(message, signature, publicKey)  // Returns boolean
+```
 
 **For Future Developers**:
-- Always use `verify` (not `verifySignature`) for wallet signature verification
-- Import: `import { verify } from 'xrpl'`
-- Usage: `verify(message, signature, publicKey)` returns boolean
-- If TypeScript errors appear on this import, check package installation before changing function names
+- ✅ DO: Use `Wallet.verify(message, signature, publicKey)`
+- ❌ DON'T: Try to import `verify` or `verifySignature` as top-level functions
+- The Wallet class provides the verify method as a static utility
+- This pattern is consistent across xrpl.js versions in Codespaces environment
 
-**Commits Related to This Issue**:
-- `0f23afa`: Incorrect fix (changed to verifySignature)
-- `23cb7c0`: Correct fix (reverted to verify)
+**Commit History (Learning from Mistakes)**:
+- `0f23afa`: First attempt - changed to verifySignature (incorrect)
+- `23cb7c0`: Second attempt - reverted to verify (incorrect)
+- `7709c12`: Final solution - use Wallet.verify() (CORRECT)
 
 **Testing Checklist**:
 - [ ] Generate valid challenge with expiration

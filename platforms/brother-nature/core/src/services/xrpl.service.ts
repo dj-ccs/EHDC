@@ -1,4 +1,4 @@
-import { Client, Wallet, xrpToDrops, Payment, TrustSet } from 'xrpl';
+import { Client, Wallet, xrpToDrops, Payment, TrustSet, verify } from 'xrpl';
 import { PrismaClient, TokenType } from '@prisma/client';
 
 interface TokenConfig {
@@ -304,5 +304,62 @@ export class XRPLService {
       userId,
       postId
     );
+  }
+
+  /**
+   * Verify a signature from an XRPL wallet
+   * This proves that the user owns the private key for the claimed address
+   */
+  verifyWalletSignature(
+    message: string,
+    signature: string,
+    publicKey: string
+  ): boolean {
+    try {
+      // Use XRPL's native signature verification
+      return verify(message, signature, publicKey);
+    } catch (error: any) {
+      console.error('Signature verification error:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Get the public key for an XRPL address
+   * Required for signature verification
+   */
+  async getPublicKey(address: string): Promise<string | null> {
+    await this.connect();
+
+    try {
+      const accountInfo = await this.client.request({
+        command: 'account_info',
+        account: address,
+        ledger_index: 'validated',
+      });
+
+      // Return the public key if available
+      // Note: Public key is only available if the account has made a transaction
+      return accountInfo.result.account_data.signer_lists?.[0]?.signers?.[0]?.account || null;
+    } catch (error: any) {
+      console.error('Failed to fetch public key:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Generate a challenge message for wallet verification
+   * Returns a formatted message that should be signed by the user's wallet
+   */
+  static generateChallengeMessage(nonce: string, xrplAddress: string): string {
+    return `Brother Nature Wallet Verification
+
+Please sign this message to verify ownership of your XRPL wallet.
+
+Wallet Address: ${xrplAddress}
+Verification Code: ${nonce}
+Timestamp: ${new Date().toISOString()}
+
+This request will expire in 5 minutes.`;
   }
 }

@@ -62,7 +62,8 @@ Authentication & Wallet Management:
 - `POST /api/auth/register` - User registration
 - `POST /api/auth/login` - JWT authentication
 - `GET /api/auth/me` - User profile
-- `POST /api/auth/wallet/link` - Link XRPL wallet ⚠️ (MVP only - see Security Enhancement below)
+- `POST /api/auth/wallet/challenge` - Generate cryptographic challenge for wallet verification ✅
+- `POST /api/auth/wallet/verify` - Verify wallet ownership with signature ✅
 - `DELETE /api/auth/wallet/unlink` - Unlink wallet
 - `GET /api/auth/wallet/balances` - View token balances and reward history
 
@@ -107,9 +108,10 @@ The following enhancements are **required** before mainnet deployment and produc
 
 ### Enhancement 1: Signature-Based Wallet Verification
 
-**Current State**: Users can link any XRPL address via simple POST request
-**Risk Level**: 🔴 **HIGH** - Critical security vulnerability for mainnet
-**Priority**: Must complete in Phase 2
+**Status**: ✅ **COMPLETE** - Implemented in Phase 2
+**Previous State**: Users could link any XRPL address via simple POST request
+**Risk Level**: 🔴 **HIGH** - Critical security vulnerability for mainnet (RESOLVED)
+**Priority**: Completed
 
 **The Problem**:
 - User can link someone else's address (malicious or accidental)

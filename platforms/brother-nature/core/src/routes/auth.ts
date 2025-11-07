@@ -1,7 +1,9 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { hashPassword, comparePassword } from '../utils/password';
-import { registerSchema, loginSchema } from '../utils/validation';
+import { registerSchema, loginSchema, walletChallengeSchema, walletVerifySchema } from '../utils/validation';
 import { authenticate } from '../middleware/auth';
+import { XRPLService } from '../services/xrpl.service';
+import crypto from 'crypto';
 
 export default async function authRoutes(fastify: FastifyInstance) {
   // Register new user
@@ -177,27 +179,17 @@ export default async function authRoutes(fastify: FastifyInstance) {
     }
   );
 
-  // Link XRPL wallet to user account
+  // Generate challenge for wallet verification (Step 1 of 2)
   fastify.post(
-    '/wallet/link',
+    '/wallet/challenge',
     { preHandler: authenticate },
-    async (request: FastifyRequest<{
-      Body: { xrplWalletAddress: string };
-    }>, reply: FastifyReply) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { xrplWalletAddress } = request.body;
-
-        // Basic validation of XRPL address format
-        if (!xrplWalletAddress || !xrplWalletAddress.startsWith('r')) {
-          return reply.status(400).send({
-            error: 'Validation Error',
-            message: 'Invalid XRPL wallet address format',
-          });
-        }
+        const body = walletChallengeSchema.parse(request.body);
 
         // Check if wallet is already linked to another user
         const existingWallet = await fastify.prisma.user.findUnique({
-          where: { xrplWalletAddress },
+          where: { xrplWalletAddress: body.xrplWalletAddress },
         });
 
         if (existingWallet && existingWallet.id !== request.user!.id) {
@@ -207,10 +199,132 @@ export default async function authRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Update user's wallet address
+        // Generate cryptographic nonce
+        const nonce = crypto.randomBytes(32).toString('hex');
+
+        // Calculate expiration (5 minutes from now)
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+        // Create challenge message
+        const message = XRPLService.generateChallengeMessage(
+          nonce,
+          body.xrplWalletAddress
+        );
+
+        // Store challenge in database
+        const challenge = await fastify.prisma.walletChallenge.create({
+          data: {
+            nonce,
+            message,
+            xrplAddress: body.xrplWalletAddress,
+            userId: request.user!.id,
+            expiresAt,
+          },
+        });
+
+        return reply.send({
+          nonce: challenge.nonce,
+          message: challenge.message,
+          expiresAt: challenge.expiresAt,
+          instructions: 'Sign this message with your XRPL wallet and submit the signature to /api/auth/wallet/verify',
+        });
+      } catch (error: any) {
+        if (error.name === 'ZodError') {
+          return reply.status(400).send({
+            error: 'Validation Error',
+            details: error.errors,
+          });
+        }
+        fastify.log.error(error);
+        return reply.status(500).send({
+          error: 'Internal Server Error',
+          message: 'Failed to generate challenge',
+        });
+      }
+    }
+  );
+
+  // Verify wallet ownership with signature (Step 2 of 2)
+  fastify.post(
+    '/wallet/verify',
+    { preHandler: authenticate },
+    async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const body = walletVerifySchema.parse(request.body);
+
+        // Find the challenge
+        const challenge = await fastify.prisma.walletChallenge.findUnique({
+          where: { nonce: body.nonce },
+        });
+
+        if (!challenge) {
+          return reply.status(404).send({
+            error: 'Not Found',
+            message: 'Challenge not found',
+          });
+        }
+
+        // Validate challenge belongs to this user
+        if (challenge.userId !== request.user!.id) {
+          return reply.status(403).send({
+            error: 'Forbidden',
+            message: 'Challenge does not belong to this user',
+          });
+        }
+
+        // Check if challenge has expired
+        if (new Date() > challenge.expiresAt) {
+          return reply.status(400).send({
+            error: 'Expired',
+            message: 'Challenge has expired. Please request a new one.',
+          });
+        }
+
+        // Check if challenge has already been used
+        if (challenge.isUsed) {
+          return reply.status(400).send({
+            error: 'Invalid',
+            message: 'Challenge has already been used',
+          });
+        }
+
+        // Verify the XRPL address matches
+        if (challenge.xrplAddress !== body.xrplWalletAddress) {
+          return reply.status(400).send({
+            error: 'Mismatch',
+            message: 'XRPL address does not match challenge',
+          });
+        }
+
+        // Verify the signature
+        const xrplService = new XRPLService(fastify.prisma);
+        const isValid = xrplService.verifyWalletSignature(
+          challenge.message,
+          body.signature,
+          body.publicKey
+        );
+
+        if (!isValid) {
+          return reply.status(400).send({
+            error: 'Invalid Signature',
+            message: 'Signature verification failed. Please ensure you signed the correct message.',
+          });
+        }
+
+        // Mark challenge as used and verified
+        await fastify.prisma.walletChallenge.update({
+          where: { id: challenge.id },
+          data: {
+            isUsed: true,
+            isVerified: true,
+            verifiedAt: new Date(),
+          },
+        });
+
+        // Link wallet to user account
         const updatedUser = await fastify.prisma.user.update({
           where: { id: request.user!.id },
-          data: { xrplWalletAddress },
+          data: { xrplWalletAddress: body.xrplWalletAddress },
           select: {
             id: true,
             email: true,
@@ -221,14 +335,20 @@ export default async function authRoutes(fastify: FastifyInstance) {
         });
 
         return reply.send({
-          message: 'XRPL wallet linked successfully',
+          message: 'XRPL wallet verified and linked successfully',
           user: updatedUser,
         });
-      } catch (error) {
+      } catch (error: any) {
+        if (error.name === 'ZodError') {
+          return reply.status(400).send({
+            error: 'Validation Error',
+            details: error.errors,
+          });
+        }
         fastify.log.error(error);
         return reply.status(500).send({
           error: 'Internal Server Error',
-          message: 'Failed to link wallet',
+          message: 'Failed to verify wallet',
         });
       }
     }

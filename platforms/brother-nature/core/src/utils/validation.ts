@@ -41,3 +41,15 @@ export const triggerSynthesisSchema = z.object({
   threadRootId: z.string().cuid(),
   synthesisType: z.enum(['thread', 'community', 'topic']).default('thread'),
 });
+
+// Wallet verification schemas
+export const walletChallengeSchema = z.object({
+  xrplWalletAddress: z.string().regex(/^r[1-9A-HJ-NP-Za-km-z]{25,34}$/),
+});
+
+export const walletVerifySchema = z.object({
+  nonce: z.string().cuid(),
+  xrplWalletAddress: z.string().regex(/^r[1-9A-HJ-NP-Za-km-z]{25,34}$/),
+  signature: z.string().min(1),
+  publicKey: z.string().min(1),
+});

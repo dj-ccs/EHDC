@@ -40,6 +40,7 @@ model User {
   communities       CommunityMember[]
   synthesisCreated  SynthesisArtifact[] @relation("SynthesisCreator")
   tokenRewards      TokenReward[]
+  walletChallenges  WalletChallenge[]
 
   @@index([email])
   @@index([username])
@@ -226,4 +227,32 @@ enum RewardStatus {
   PROCESSING   // Transaction being sent to XRPL
   CONFIRMED    // Transaction confirmed on ledger
   FAILED       // Transaction failed
+}
+
+// WalletChallenge model - Cryptographic challenges for wallet verification
+model WalletChallenge {
+  id              String   @id @default(cuid())
+
+  // Challenge data
+  nonce           String   @unique  // Random unique string
+  message         String   // Message to be signed
+  xrplAddress     String   // XRPL address attempting to link
+
+  // User attempting to link
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Status
+  isUsed          Boolean  @default(false)  // Has this challenge been used?
+  isVerified      Boolean  @default(false)  // Was verification successful?
+
+  // Timestamps
+  createdAt       DateTime @default(now())
+  expiresAt       DateTime // Challenge expiration (typically 5 minutes)
+  verifiedAt      DateTime? // When verification succeeded
+
+  @@index([userId])
+  @@index([nonce])
+  @@index([expiresAt])
+  @@index([isUsed, isVerified])
 }

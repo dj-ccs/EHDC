@@ -1,4 +1,4 @@
-import { Client, Wallet, Payment, TrustSet, verify } from 'xrpl';
+import { Client, Wallet, Payment, TrustSet } from 'xrpl';
 import { PrismaClient, TokenType } from '@prisma/client';
 
 interface TokenConfig {
@@ -316,8 +316,8 @@ export class XRPLService {
     publicKey: string
   ): boolean {
     try {
-      // Use XRPL's native signature verification
-      return verify(message, signature, publicKey);
+      // Use XRPL's native signature verification via Wallet static method
+      return Wallet.verify(message, signature, publicKey);
     } catch (error: any) {
       console.error('Signature verification error:', error);
       return false;

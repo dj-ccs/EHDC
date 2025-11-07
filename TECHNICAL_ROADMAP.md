@@ -164,6 +164,29 @@ Implement cryptographic signature-based verification using XRPL's native signing
 - XRPL Documentation: https://xrpl.org/cryptographic-keys.html
 - xrpl.js signing: https://js.xrpl.org/modules.html#verify
 
+**Known Issues & Implementation Notes**:
+
+⚠️ **xrpl.js API Quirk - Function Name Confusion**
+
+The xrpl.js library exports two similar functions for signature verification:
+- `verify(message, signature, publicKey)` - Takes 3 arguments (CORRECT for our use case)
+- `verifySignature(message, signature)` - Takes 1-2 arguments, different signature
+
+**Issue Encountered**: Initial TypeScript error (TS2305) incorrectly suggested `verify` was not exported,
+leading to a false correction to `verifySignature`. This caused TS2554 error ("Expected 1-2 arguments, but got 3").
+
+**Resolution**: The original `verify` function is correct. The TS2305 error was environmental.
+
+**For Future Developers**:
+- Always use `verify` (not `verifySignature`) for wallet signature verification
+- Import: `import { verify } from 'xrpl'`
+- Usage: `verify(message, signature, publicKey)` returns boolean
+- If TypeScript errors appear on this import, check package installation before changing function names
+
+**Commits Related to This Issue**:
+- `0f23afa`: Incorrect fix (changed to verifySignature)
+- `23cb7c0`: Correct fix (reverted to verify)
+
 **Testing Checklist**:
 - [ ] Generate valid challenge with expiration
 - [ ] Reject expired nonces

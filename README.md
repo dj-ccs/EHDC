@@ -13,20 +13,14 @@
 
 ## Mission Statement
 
-This repository contains the official implementation of the **Ecosystem Health-derived Digital Currency (EHDC)** system and the **Brother Nature** platform. It serves as the focused **"Implementation Laboratory"** for the broader vision outlined in the **Unified Conscious Evolution Framework (UCF)**.
-
-While the [UCF Repository](https://github.com/dj-ccs/Unified-Conscious-Evolution-Framework) holds the comprehensive "North Star" vision, **this repository is where theory becomes working code**.
+This repository contains the official implementation of the **Ecosystem Health-derived Digital Currency (EHDC)** system and the **Brother Nature** platform. 
 
 ### An Implementation Lab of the Unified Conscious Evolution Framework (UCF)
 
-**This repository is the active Implementation Laboratory for Pillar IV (Ecosystem Partnership) 
-of the Unified Conscious Evolution Framework (UCF).**
+This repository is the active **Implementation Laboratory for Pillar IV (Ecosystem Partnership)** of the [Unified Conscious Evolution Framework (UCF)](https://github.com/dj-ccs/Unified-Conscious-Evolution-Framework).
 
-**Our Mission**: To build the working code for a regenerative economy, including the Brother 
-Nature social platform and the EHDC 3-token system (EXPLORER, REGEN, GUARDIAN).
-
-**Our North Star**: The UCF Repository contains the full 12-token vision and philosophical 
-architecture that guides our work here.
+*   **Our Mission:** To build the working code for a regenerative economy, including the Brother Nature social platform and the EHDC 3-token system (EXPLORER, REGEN, GUARDIAN).
+*   **Our North Star:** The [UCF Repository](https://github.com/dj-ccs/Unified-Conscious-Evolution-Framework) contains the full 12-token vision and philosophical architecture that guides our work here.
 
 **Purpose**: Build, test, and validate the core components of the regenerative economy.
 

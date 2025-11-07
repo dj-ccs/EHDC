@@ -7,8 +7,8 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 // User model - Authentication and profile
@@ -114,7 +114,7 @@ model Post {
 
   // Content
   title         String?  // Only for top-level posts
-  content       String   @db.Text
+  content       String   
   contentType   String   @default("markdown")  // markdown, plain, html
 
   // Threading
@@ -154,8 +154,8 @@ model SynthesisArtifact {
 
   // Synthesis content
   title           String
-  summary         String   @db.Text  // The synthesized summary
-  keyPoints       String[] // Array of key insights
+  summary         String     // The synthesized summary
+  keyPoints String @map("key_points")
 
   // Metadata
   synthesisType   String   @default("thread")  // thread, community, topic

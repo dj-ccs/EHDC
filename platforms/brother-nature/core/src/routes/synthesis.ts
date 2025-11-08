@@ -46,7 +46,7 @@ export default async function synthesisRoutes(fastify: FastifyInstance) {
           data: {
             title: synthesis.title,
             summary: synthesis.summary,
-            keyPoints: synthesis.keyPoints,
+            keyPoints: JSON.stringify(synthesis.keyPoints), // SQLite: serialize array to JSON
             synthesisType: body.synthesisType,
             aiModel: 'manual-mvp',
             threadRootId: body.threadRootId,
@@ -92,8 +92,14 @@ export default async function synthesisRoutes(fastify: FastifyInstance) {
           // Token reward will remain in FAILED status in database
         }
 
+        // Parse keyPoints from JSON string to array (SQLite compatibility)
+        const parsedArtifact = {
+          ...artifact,
+          keyPoints: JSON.parse(artifact.keyPoints),
+        };
+
         return reply.status(201).send({
-          artifact,
+          artifact: parsedArtifact,
           metadata: {
             postsAnalyzed: threadPosts.length + 1, // +1 for root post
             threadDepth: Math.max(...threadPosts.map((p) => p.threadDepth), 0),
@@ -142,7 +148,13 @@ export default async function synthesisRoutes(fastify: FastifyInstance) {
         orderBy: { createdAt: 'desc' },
       });
 
-      return reply.send({ artifacts });
+      // Parse keyPoints from JSON string to array (SQLite compatibility)
+      const parsedArtifacts = artifacts.map(artifact => ({
+        ...artifact,
+        keyPoints: JSON.parse(artifact.keyPoints),
+      }));
+
+      return reply.send({ artifacts: parsedArtifacts });
     } catch (error) {
       fastify.log.error(error);
       return reply.status(500).send({
@@ -200,7 +212,13 @@ export default async function synthesisRoutes(fastify: FastifyInstance) {
         });
       }
 
-      return reply.send({ artifact });
+      // Parse keyPoints from JSON string to array (SQLite compatibility)
+      const parsedArtifact = {
+        ...artifact,
+        keyPoints: JSON.parse(artifact.keyPoints),
+      };
+
+      return reply.send({ artifact: parsedArtifact });
     } catch (error) {
       fastify.log.error(error);
       return reply.status(500).send({
@@ -248,8 +266,14 @@ export default async function synthesisRoutes(fastify: FastifyInstance) {
 
       const total = await fastify.prisma.synthesisArtifact.count();
 
+      // Parse keyPoints from JSON string to array (SQLite compatibility)
+      const parsedArtifacts = artifacts.map(artifact => ({
+        ...artifact,
+        keyPoints: JSON.parse(artifact.keyPoints),
+      }));
+
       return reply.send({
-        artifacts,
+        artifacts: parsedArtifacts,
         pagination: {
           page,
           limit,

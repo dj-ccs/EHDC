@@ -1,3 +1,28 @@
+// src/index.ts (Modify the block at the very top)
+
+// --- START Fastify/JWT TypeScript Type Augmentation (Correct Method) ---
+declare module "@fastify/jwt" {
+  interface FastifyJWT {
+    // Defines the full structure of the data you put into the token payload
+    payload: { 
+      id: string; 
+      email: string;
+      username: string;
+      role: string;
+      // Add any other properties you sign into the token here
+    }; 
+    
+    // Defines the shape of the decoded user object attached to the request
+    user: { 
+      id: string; 
+      email: string;
+      username: string;
+      role: string;
+      // All properties that are accessed via request.user must be listed here
+    }; 
+  }
+}
+// --- END Fastify/JWT TypeScript Type Augmentation (Correct Method) ---
 import Fastify from 'fastify';
 import fastifyCors from '@fastify/cors';
 import fastifyHelmet from '@fastify/helmet';
@@ -51,12 +76,10 @@ const setupPlugins = async () => {
   });
 
   // JWT Authentication
+  // @ts-ignore
   await fastify.register(fastifyJwt, {
-    secret: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
-    sign: {
-      expiresIn: '7d',
-    },
-  });
+    secret: process.env.JWT_SECRET!
+  }); 
 
   // Rate limiting
   await fastify.register(fastifyRateLimit, {

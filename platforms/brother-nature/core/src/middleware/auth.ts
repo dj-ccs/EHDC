@@ -1,57 +1,41 @@
 import { FastifyRequest, FastifyReply } from 'fastify';
-import { UserRole } from '@prisma/client';
 
-// Extend FastifyRequest to include user
-declare module 'fastify' {
-  interface FastifyRequest {
-    user?: {
-      id: string;
-      email: string;
-      username: string;
-      role: UserRole;
-    };
-  }
-}
-
-// Middleware to verify JWT token
 export const authenticate = async (request: FastifyRequest, reply: FastifyReply) => {
   try {
-    await request.jwtVerify();
-  } catch (err) {
-    reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or missing token' });
+    const authHeader = request.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) return reply.status(401).send({ error: 'Missing token' });
+
+    const token = authHeader.split(' ')[1];
+    
+    // The payload is verified asynchronously.
+    const payload = await request.server.jwt.verify(token);
+
+    // We use 'as any' to force the assignment, trusting that our type augmentation in src/index.ts is correct
+    (request.user as any) = payload; 
+    
+  } catch (error) {
+    return reply.status(401).send({ error: 'Invalid token' });
   }
 };
 
-// Middleware to check if user is a steward or admin
 export const requireSteward = async (request: FastifyRequest, reply: FastifyReply) => {
-  try {
-    await request.jwtVerify();
-    const user = request.user;
-
-    if (!user || (user.role !== 'STEWARD' && user.role !== 'ADMIN')) {
-      reply.status(403).send({
-        error: 'Forbidden',
-        message: 'Steward or Admin role required',
-      });
-    }
-  } catch (err) {
-    reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or missing token' });
+  await authenticate(request, reply);
+  if (reply.sent) return;
+  
+  // Cast request.user to 'any' to access its properties without TypeScript errors
+  const user = request.user as any; 
+  
+  if (!user || (user.role !== 'STEWARD' && user.role !== 'ADMIN')) {
+    return reply.status(403).send({ error: 'Requires STEWARD or ADMIN' });
   }
 };
 
-// Middleware to check if user is an admin
 export const requireAdmin = async (request: FastifyRequest, reply: FastifyReply) => {
-  try {
-    await request.jwtVerify();
-    const user = request.user;
-
-    if (!user || user.role !== 'ADMIN') {
-      reply.status(403).send({
-        error: 'Forbidden',
-        message: 'Admin role required',
-      });
-    }
-  } catch (err) {
-    reply.status(401).send({ error: 'Unauthorized', message: 'Invalid or missing token' });
+  await authenticate(request, reply);
+  if (reply.sent) return;
+  
+  // Cast request.user to 'any' to access its properties without TypeScript errors
+  if (!(request.user as any) || (request.user as any).role !== 'ADMIN') {
+    return reply.status(403).send({ error: 'Requires ADMIN' });
   }
 };

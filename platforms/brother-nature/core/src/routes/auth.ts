@@ -11,7 +11,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
     try {
       const body = registerSchema.parse(request.body);
 
-      // Check if user already exists
       const existingUser = await fastify.prisma.user.findFirst({
         where: {
           OR: [{ email: body.email }, { username: body.username }],
@@ -25,9 +24,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Hash password and create user
       const passwordHash = await hashPassword(body.password);
-
       const user = await fastify.prisma.user.create({
         data: {
           email: body.email,
@@ -45,18 +42,14 @@ export default async function authRoutes(fastify: FastifyInstance) {
         },
       });
 
-      // Generate JWT token
       const token = fastify.jwt.sign({
         id: user.id,
         email: user.email,
         username: user.username,
         role: user.role,
-      });
+      }, { expiresIn: '7d' });
 
-      return reply.status(201).send({
-        user,
-        token,
-      });
+      return reply.status(201).send({ user, token });
     } catch (error: any) {
       if (error.name === 'ZodError') {
         return reply.status(400).send({
@@ -77,7 +70,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
     try {
       const body = loginSchema.parse(request.body);
 
-      // Find user
       const user = await fastify.prisma.user.findUnique({
         where: { email: body.email },
       });
@@ -89,7 +81,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
         });
       }
 
-      // Verify password
       const isValid = await comparePassword(body.password, user.passwordHash);
 
       if (!isValid) {
@@ -105,13 +96,12 @@ export default async function authRoutes(fastify: FastifyInstance) {
         data: { lastLoginAt: new Date() },
       });
 
-      // Generate JWT token
       const token = fastify.jwt.sign({
         id: user.id,
         email: user.email,
         username: user.username,
         role: user.role,
-      });
+      }, { expiresIn: '7d' });
 
       return reply.send({
         user: {
@@ -146,7 +136,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const user = await fastify.prisma.user.findUnique({
-          where: { id: request.user!.id },
+          where: { id: request.user.id },
           select: {
             id: true,
             email: true,
@@ -187,37 +177,32 @@ export default async function authRoutes(fastify: FastifyInstance) {
       try {
         const body = walletChallengeSchema.parse(request.body);
 
-        // Check if wallet is already linked to another user
         const existingWallet = await fastify.prisma.user.findUnique({
           where: { xrplWalletAddress: body.xrplWalletAddress },
         });
 
-        if (existingWallet && existingWallet.id !== request.user!.id) {
+        if (existingWallet && existingWallet.id !== request.user.id) {
           return reply.status(409).send({
             error: 'Conflict',
             message: 'This wallet is already linked to another account',
           });
         }
 
-        // Generate cryptographic nonce
         const nonce = crypto.randomBytes(32).toString('hex');
 
-        // Calculate expiration (5 minutes from now)
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-        // Create challenge message
         const message = XRPLService.generateChallengeMessage(
           nonce,
           body.xrplWalletAddress
         );
 
-        // Store challenge in database
         const challenge = await fastify.prisma.walletChallenge.create({
           data: {
             nonce,
             message,
             xrplAddress: body.xrplWalletAddress,
-            userId: request.user!.id,
+            userId: request.user.id,
             expiresAt,
           },
         });
@@ -252,7 +237,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
       try {
         const body = walletVerifySchema.parse(request.body);
 
-        // Find the challenge
         const challenge = await fastify.prisma.walletChallenge.findUnique({
           where: { nonce: body.nonce },
         });
@@ -264,15 +248,13 @@ export default async function authRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Validate challenge belongs to this user
-        if (challenge.userId !== request.user!.id) {
+        if (challenge.userId !== request.user.id) {
           return reply.status(403).send({
             error: 'Forbidden',
             message: 'Challenge does not belong to this user',
           });
         }
 
-        // Check if challenge has expired
         if (new Date() > challenge.expiresAt) {
           return reply.status(400).send({
             error: 'Expired',
@@ -280,7 +262,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Check if challenge has already been used
         if (challenge.isUsed) {
           return reply.status(400).send({
             error: 'Invalid',
@@ -288,7 +269,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Verify the XRPL address matches
         if (challenge.xrplAddress !== body.xrplWalletAddress) {
           return reply.status(400).send({
             error: 'Mismatch',
@@ -296,7 +276,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Verify the signature
         const xrplService = new XRPLService(fastify.prisma);
         const isValid = xrplService.verifyWalletSignature(
           challenge.message,
@@ -311,7 +290,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Mark challenge as used and verified
         await fastify.prisma.walletChallenge.update({
           where: { id: challenge.id },
           data: {
@@ -321,9 +299,8 @@ export default async function authRoutes(fastify: FastifyInstance) {
           },
         });
 
-        // Link wallet to user account
         const updatedUser = await fastify.prisma.user.update({
-          where: { id: request.user!.id },
+          where: { id: request.user.id },
           data: { xrplWalletAddress: body.xrplWalletAddress },
           select: {
             id: true,
@@ -361,7 +338,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const updatedUser = await fastify.prisma.user.update({
-          where: { id: request.user!.id },
+          where: { id: request.user.id },
           data: { xrplWalletAddress: null },
           select: {
             id: true,
@@ -393,7 +370,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
     async (request: FastifyRequest, reply: FastifyReply) => {
       try {
         const user = await fastify.prisma.user.findUnique({
-          where: { id: request.user!.id },
+          where: { id: request.user.id },
           select: { xrplWalletAddress: true },
         });
 
@@ -404,10 +381,9 @@ export default async function authRoutes(fastify: FastifyInstance) {
           });
         }
 
-        // Get token rewards history
         const rewards = await fastify.prisma.tokenReward.findMany({
           where: {
-            userId: request.user!.id,
+            userId: request.user.id,
             status: 'CONFIRMED',
           },
           select: {
@@ -420,7 +396,6 @@ export default async function authRoutes(fastify: FastifyInstance) {
           orderBy: { confirmedAt: 'desc' },
         });
 
-        // Calculate totals by token type
         const totals = rewards.reduce((acc, reward) => {
           const amount = parseFloat(reward.amount);
           acc[reward.tokenType] = (acc[reward.tokenType] || 0) + amount;
@@ -434,7 +409,7 @@ export default async function authRoutes(fastify: FastifyInstance) {
             REGEN: totals.REGEN || 0,
             GUARDIAN: totals.GUARDIAN || 0,
           },
-          recentRewards: rewards.slice(0, 10), // Last 10 rewards
+          recentRewards: rewards.slice(0, 10),
         });
       } catch (error) {
         fastify.log.error(error);

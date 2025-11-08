@@ -179,7 +179,7 @@ The key is diversity - more species means more ecosystem functions.`,
     data: {
       title: 'Synthesis: Regenerative Soil Practices Discussion',
       summary: `This thread initiated by Sarah Chen explores practical regenerative soil practices in the Deniliquin region. Key focus on cover cropping strategies, with specific species recommendations for local climate conditions. The conversation demonstrates strong community knowledge sharing around nitrogen fixation and ecosystem diversity principles.`,
-      keyPoints: JSON.stringify([
+      keyPoints: [
         'Cover cropping is central to regenerative practice',
         'Species diversity drives multiple ecosystem functions',
         'Winter mix: oats and field peas recommended',

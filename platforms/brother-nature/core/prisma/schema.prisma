@@ -7,8 +7,8 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = "file:./dev.db"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // User model - Authentication and profile
@@ -155,7 +155,7 @@ model SynthesisArtifact {
   // Synthesis content
   title           String
   summary         String     // The synthesized summary
-  keyPoints String @map("key_points")
+  keyPoints       String[]   @map("key_points") // PostgreSQL native array type
 
   // Metadata
   synthesisType   String   @default("thread")  // thread, community, topic

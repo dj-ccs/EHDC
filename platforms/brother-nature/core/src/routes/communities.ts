@@ -70,7 +70,7 @@ export default async function communityRoutes(fastify: FastifyInstance) {
   );
 
   // Get all communities
-  fastify.get('/', async (request: FastifyRequest, reply: FastifyReply) => {
+  fastify.get('/', async (_request: FastifyRequest, reply: FastifyReply) => {
     try {
       const communities = await fastify.prisma.community.findMany({
         where: { isActive: true },
@@ -129,11 +129,9 @@ export default async function communityRoutes(fastify: FastifyInstance) {
   fastify.post(
     '/:communityId/join',
     { preHandler: authenticate },
-    async (request: FastifyRequest<{
-      Params: { communityId: string };
-    }>, reply: FastifyReply) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { communityId } = request.params;
+        const { communityId } = request.params as { communityId: string };
 
         // Check if community exists
         const community = await fastify.prisma.community.findUnique({

@@ -48,7 +48,7 @@ export const walletChallengeSchema = z.object({
 });
 
 export const walletVerifySchema = z.object({
-  nonce: z.string().cuid(),
+  nonce: z.string().length(64).regex(/^[0-9a-f]{64}$/), // 32-byte hex string
   xrplWalletAddress: z.string().regex(/^r[1-9A-HJ-NP-Za-km-z]{25,34}$/),
   signature: z.string().min(1),
   publicKey: z.string().min(1),

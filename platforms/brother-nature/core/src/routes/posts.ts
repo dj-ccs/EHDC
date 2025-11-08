@@ -201,11 +201,9 @@ export default async function postRoutes(fastify: FastifyInstance) {
   fastify.put(
     '/:postId',
     { preHandler: authenticate },
-    async (request: FastifyRequest<{
-      Params: { postId: string };
-    }>, reply: FastifyReply) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { postId } = request.params;
+        const { postId } = request.params as { postId: string };
         const body = updatePostSchema.parse(request.body);
 
         // Check if post exists and user is the author
@@ -266,11 +264,9 @@ export default async function postRoutes(fastify: FastifyInstance) {
   fastify.delete(
     '/:postId',
     { preHandler: authenticate },
-    async (request: FastifyRequest<{
-      Params: { postId: string };
-    }>, reply: FastifyReply) => {
+    async (request: FastifyRequest, reply: FastifyReply) => {
       try {
-        const { postId } = request.params;
+        const { postId } = request.params as { postId: string };
 
         // Check if post exists and user is the author
         const existingPost = await fastify.prisma.post.findUnique({

@@ -85,6 +85,57 @@ export default async function postRoutes(fastify: FastifyInstance) {
     }
   );
 
+  // Get all posts (for testing/development)
+  fastify.get('/', async (request: FastifyRequest<{
+    Querystring: { page?: string; limit?: string };
+  }>, reply: FastifyReply) => {
+    try {
+      const page = parseInt(request.query.page || '1', 10);
+      const limit = parseInt(request.query.limit || '20', 10);
+      const skip = (page - 1) * limit;
+
+      const posts = await fastify.prisma.post.findMany({
+        skip,
+        take: limit,
+        include: {
+          author: {
+            select: {
+              id: true,
+              username: true,
+              displayName: true,
+            },
+          },
+          community: {
+            select: {
+              id: true,
+              name: true,
+              slug: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      const total = await fastify.prisma.post.count();
+
+      return reply.send({
+        posts,
+        pagination: {
+          page,
+          limit,
+          total,
+          pages: Math.ceil(total / limit),
+        },
+      });
+    } catch (error) {
+      fastify.log.error(error);
+      return reply.status(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to fetch posts',
+      });
+    }
+  });
+
   // Get posts for a community
   fastify.get('/community/:communityId', async (request: FastifyRequest<{
     Params: { communityId: string };

@@ -294,10 +294,11 @@ src/routes/
 3. Server creates WalletChallenge record (expires in 5 min)
 4. Returns { nonce, message: "Verify ownership for Brother Nature..." }
 
-5. Client signs message with XRPL wallet private key
+5. Client signs message with XRPL wallet private key (using ripple-keypairs)
 6. Client POSTs to /wallet/verify with nonce, signature, publicKey
 7. Server validates nonce (not expired, not used)
-8. Server verifies signature using xrpl.verify(message, signature, publicKey)
+8. Server verifies signature using ripple-keypairs.verify(messageHex, signature, publicKey)
+   - Converts message to hex before verification
 9. If valid: updates User.xrplWalletAddress, marks challenge as used
 10. Returns success
 ```
@@ -498,6 +499,8 @@ ADMIN
 
 ## 8. XRPL Integration
 
+> 📖 **For comprehensive XRPL integration documentation, see [XRPL-WALLET-VERIFICATION.md](./XRPL-WALLET-VERIFICATION.md)**
+
 ### XRPL Service (`src/services/xrpl.service.ts`)
 
 Handles all XRPL network interactions:
@@ -505,10 +508,20 @@ Handles all XRPL network interactions:
 **1. Wallet Signature Verification**
 ```typescript
 verifyWalletSignature(message: string, signature: string, publicKey: string): boolean {
-  // Uses xrpl.verify() function (with @ts-ignore for type bug)
-  // Returns true if signature proves ownership of wallet
+  // Uses ripple-keypairs.verify() instead of xrpl.verify()
+  // (xrpl@3.1.0 does not export verify function)
+  //
+  // 1. Converts UTF-8 message to hex: Buffer.from(message, 'utf8').toString('hex')
+  // 2. Verifies signature using ripple-keypairs cryptography
+  // 3. Returns true if signature proves ownership of wallet
 }
 ```
+
+**Implementation Details:**
+- Message must be converted to hex before verification
+- Uses `ripple-keypairs` library for cryptographic operations
+- Challenge-response pattern prevents replay attacks
+- 5-minute expiry on all challenges
 
 **2. Token Reward Distribution**
 ```typescript
@@ -531,6 +544,31 @@ async rewardVerifiedContribution(
 - **EXPLORER** - Discovery & Documentation rewards
 - **REGEN** - Restoration & Recovery rewards
 - **GUARDIAN** - Stewardship & Continuity rewards
+
+### Testing Tools
+
+**xrpl_helper.js** - Complete workflow test (challenge → sign → verify)
+```bash
+node xrpl_helper.js
+```
+
+**sign-message.js** - CLI message signing utility
+```bash
+node sign-message.js <SECRET> <MESSAGE>
+```
+
+### XRPL Documentation Standards
+
+All XRPL-related integrations should follow these documentation patterns:
+
+1. **System Components Table** - Define client, server, database, and XRPL layers
+2. **Flow Diagram** - ASCII diagram showing request/response flow (~10 steps max)
+3. **Implementation Notes** - Encoding, signature schemes, expiry, edge cases
+4. **File Map** - Directory structure for the feature
+5. **Security Considerations** - Secret handling, auth requirements, validation
+6. **Testing Harness** - Scripts and instructions for local testing
+
+See [XRPL-WALLET-VERIFICATION.md](./XRPL-WALLET-VERIFICATION.md) for the complete pattern.
 
 ---
 

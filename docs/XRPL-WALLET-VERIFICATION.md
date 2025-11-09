@@ -1,0 +1,350 @@
+# XRPL Wallet Verification: Documentation & Workflow
+
+## 1. Overview
+
+This workflow implements **XRPL wallet verification** in the Brother Nature platform using:
+
+* `xrpl` library for blockchain operations.
+* `ripple-keypairs` for cryptographic signing and verification.
+* Prisma for persistence of challenges and user associations.
+
+The `xrpl_helper.js` script is a **one-shot utility** for testing wallet challenge generation, signing, and verification.
+
+---
+
+## 2. Core Fix
+
+Previously, `XRPLService.verifyWalletSignature` attempted to call `verify` from `xrpl`:
+
+```ts
+return verify(messageHex, signature, publicKey);
+```
+
+This failed because `xrpl@3.1.0` does **not** export `verify`.
+
+**Solution:** use `ripple-keypairs` instead:
+
+```ts
+import * as keypairs from 'ripple-keypairs';
+
+verifyWalletSignature(message: string, signature: string, publicKey: string): boolean {
+    const messageHex = Buffer.from(message, "utf8").toString("hex");
+    return keypairs.verify(messageHex, signature, publicKey);
+}
+```
+
+* Converts the UTF-8 message to hex (`Buffer.from(message, "utf8").toString("hex")`).
+* Verifies using the standard XRPL keypair cryptography.
+
+---
+
+## 3. Wallet Challenge Flow
+
+1. **Generate challenge**
+   `POST /api/auth/wallet/challenge`
+
+   * Input: `xrplWalletAddress`
+   * Output: `nonce` and `message`
+   * Message is a temporary string to sign (5-minute expiration).
+
+2. **Sign challenge locally**
+
+   ```js
+   const { privateKey, publicKey } = keypairs.deriveKeypair(TEST_SECRET);
+   const messageHex = Buffer.from(MESSAGE, "utf8").toString("hex");
+   const signature = keypairs.sign(messageHex, privateKey);
+   ```
+
+3. **Submit signed challenge**
+   `POST /api/auth/wallet/verify`
+
+   * Input: `nonce`, `xrplWalletAddress`, `signature`, `publicKey`
+   * Server calls `XRPLService.verifyWalletSignature` to confirm ownership.
+   * Status updated in `WalletChallenge` table.
+
+---
+
+## 4. `xrpl_helper.js` Usage
+
+```bash
+node xrpl_helper.js
+```
+
+* Connects to local dev server.
+* Requests a challenge.
+* Signs the challenge using a local test wallet.
+* Submits signature for verification.
+* Prints response (success/failure).
+
+**Example Output:**
+
+```
+--- 1. REQUESTING CHALLENGE ---
+✅ Challenge captured. Nonce: a6f3c97f0b...
+--- 2. SIGNING MESSAGE ---
+✅ Signature generated
+Address:    r9txmYFfUfzgzfdMUdeZ1Y8etdWmxEayRf
+Public Key: EDF6E5AC2A4A23131760348FC2787CFD1E272A61CB405BEC3E01090D79706F1206
+Signature:  CF325656B1EEBE3...
+--- 3. VERIFYING SIGNATURE ---
+{ success: true, verifiedAt: '2025-11-09T19:47:27.949Z' }
+--- DONE ---
+```
+
+> If verification fails, check that `message` matches exactly what the server sent, and that the hex conversion is performed.
+
+---
+
+## 5. XRPLService Updates
+
+### Signature Verification Method
+
+```ts
+import * as keypairs from 'ripple-keypairs';
+
+verifyWalletSignature(
+    message: string,
+    signature: string,
+    publicKey: string
+): boolean {
+    try {
+        const messageHex = Buffer.from(message, "utf8").toString("hex");
+        return keypairs.verify(messageHex, signature, publicKey);
+    } catch (error: any) {
+        console.error('Signature verification error:', error);
+        return false;
+    }
+}
+```
+
+* Converts message to hex before verification.
+* Uses `ripple-keypairs` to avoid `xrpl` import issues.
+
+---
+
+### Additional Notes
+
+* **Hex conversion is required**: `ripple-keypairs` expects hex input.
+* **JWT auth**: `xrpl_helper.js` uses a temporary JWT to test endpoints.
+* **Prisma tables**:
+  * `WalletChallenge`: stores nonce, message, wallet, userId, used/verified flags.
+* **Helper script** is a dev-only tool and should **not be used in production** with real funds.
+
+---
+
+# ⚡ XRPL Wallet Verification Overview
+
+Secure, one-time wallet verification using **message signing** on the **XRPL**.
+Used to prove ownership of an XRPL wallet without exposing the private key.
+
+---
+
+## 🧩 System Components
+
+| Layer                                      | Description                                                                                   |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| 🖥️ **Client / Helper Script**             | Runs locally (e.g. `xrpl_helper.js`) — requests challenge, signs message, verifies signature. |
+| 🌐 **API Server (Fastify + XRPLService)**  | Issues challenges and verifies signatures.                                                    |
+| 🗄️ **Database (PostgreSQL via Prisma)**   | Tracks challenges, expiry, and verification results.                                          |
+| 🔐 **XRPL Cryptography (ripple-keypairs)** | Handles message signing and verification logic.                                               |
+
+---
+
+## 🔄 Verification Flow
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│                    XRPL Wallet Verification                   │
+└──────────────────────────────────────────────────────────────┘
+        │
+        ▼
+[1] Client → /api/auth/wallet/challenge
+    Request a new challenge (JWT required)
+        │
+        ▼
+[2] Server → DB
+    Create new challenge record (nonce, message, expiry)
+        │
+        ▼
+[3] Server → Client
+    Return message and nonce to sign
+        │
+        ▼
+[4] Client
+    Sign message using XRPL private key (ripple-keypairs)
+        │
+        ▼
+[5] Client → /api/auth/wallet/verify
+    Submit nonce, signature, publicKey
+        │
+        ▼
+[6] Server verifies signature
+    If valid → mark challenge used + verified
+        │
+        ▼
+[7] Server → Client
+    ✅ Success (wallet verified)
+```
+
+---
+
+## 🧠 Implementation Notes
+
+* Messages are **signed as UTF-8 → HEX** before XRPL verification.
+* `ripple-keypairs.verify()` ensures signature authenticity.
+* Each challenge has a **5-minute expiry** and cannot be reused.
+* Server enforces **JWT authentication** for both challenge and verify endpoints.
+* Database flags used challenges:
+
+  ```ts
+  isUsed = true;
+  isVerified = true;
+  verifiedAt = new Date();
+  ```
+
+---
+
+## 📂 File Overview
+
+```
+/api/auth
+ └── /routes/auth.ts        # Challenge and verify endpoints
+
+/services
+ └── xrpl.service.ts        # Handles cryptographic operations
+
+/scripts
+ ├── xrpl_helper.js         # Local test/verification client
+ └── sign-message.js        # CLI tool for signing messages
+```
+
+---
+
+## 🧭 Documentation Standards for XRPL Integrations
+
+To ensure consistent architecture documentation across all XRPL-related modules (verification, token minting, NFT auth, escrow, etc.), follow this structure:
+
+---
+
+### 1. **Title and Context**
+
+Briefly name the subsystem and describe its purpose in one line.
+Example:
+
+> **XRPL Token Minting Service** — securely mints on-ledger tokens using server-signed transactions.
+
+---
+
+### 2. **System Components Table**
+
+| Layer            | Description                                                       |
+| ---------------- | ----------------------------------------------------------------- |
+| 🖥️ Client / CLI | Describe how users or scripts interact (e.g. signing, broadcast). |
+| 🌐 Server API    | Outline primary endpoints and auth method.                        |
+| 🗄️ Database     | Identify what's persisted (transactions, metadata, receipts).     |
+| 🔐 XRPL Logic    | Note what ripple-lib/xrpl-js functions are invoked.               |
+
+---
+
+### 3. **Verification / Transaction Flow Diagram**
+
+Use ASCII or Markdown flow blocks like:
+
+```text
+[1] Client → /api/xrpl/mint
+[2] Server validates JWT and payload
+[3] Server signs transaction using operator key
+[4] Transaction submitted to XRPL network
+[5] XRPL → Server (tx_hash, status)
+[6] Server → DB + Client confirmation
+```
+
+Keep it under ~10 steps, clearly marking API boundaries.
+
+---
+
+### 4. **Implementation Notes**
+
+List all critical technical details:
+
+* Encoding (UTF-8/HEX/Base64)
+* Signature scheme (`ripple-keypairs`, `xrpl.Wallet.sign`)
+* Expiry and nonce logic
+* Validation edge cases (e.g., replay protection)
+* Environment dependencies (testnet/mainnet)
+
+---
+
+### 5. **File Map**
+
+Add a minimal directory tree, e.g.:
+
+```
+/api/xrpl/mint/
+ ├── mint.ts
+ ├── utils.ts
+ └── XRPLService.ts
+```
+
+---
+
+### 6. **Security Considerations**
+
+Always include:
+
+* Never log private keys or full secrets.
+* JWT must be required for all sensitive routes.
+* Always check challenge expiry or transaction timeout.
+* Validate all on-chain responses via `tx.meta.TransactionResult`.
+
+---
+
+### 7. **Testing Harness (Optional)**
+
+If the module can be exercised via a helper like `xrpl_helper.js`, note it as:
+
+```bash
+# Example local test
+node scripts/xrpl_helper_mint.js
+```
+
+Include environment setup instructions if necessary.
+
+---
+
+## 🔒 Security Best Practices
+
+1. **Never log secrets**: Private keys, wallet secrets, or JWT tokens should never be logged
+2. **JWT required**: All XRPL endpoints require valid JWT authentication
+3. **Challenge expiry**: Challenges expire after 5 minutes and cannot be reused
+4. **Hex encoding**: Always convert UTF-8 messages to hex before signing/verifying
+5. **Production safety**: Never use test wallets or hardcoded secrets in production
+
+---
+
+## 🚀 Quick Start
+
+1. **Install dependencies**:
+   ```bash
+   npm install ripple-keypairs node-fetch@2
+   ```
+
+2. **Get testnet wallet**: Visit https://xrpl.org/xrp-testnet-faucet.html
+
+3. **Update configuration**: Edit `xrpl_helper.js` with your JWT token and wallet secret
+
+4. **Run test**:
+   ```bash
+   node xrpl_helper.js
+   ```
+
+---
+
+## 📝 Changelog
+
+### 2025-11-09
+- Fixed `XRPLService.verifyWalletSignature` to use `ripple-keypairs` instead of non-existent `xrpl.verify`
+- Added hex encoding for message verification
+- Created comprehensive test helper (`xrpl_helper.js`)
+- Added `ripple-keypairs` and `node-fetch@2` dependencies
+- Documented complete workflow and integration patterns

@@ -1,5 +1,5 @@
-// @ts-ignore - xrpl@3.1.0 has incorrect TypeScript definitions; verify exists at runtime
-import { Client, Wallet, Payment, TrustSet, verify } from 'xrpl';
+import { Client, Wallet, Payment, TrustSet } from 'xrpl';
+import * as keypairs from 'ripple-keypairs';
 import { PrismaClient, TokenType } from '@prisma/client';
 
 interface TokenConfig {
@@ -310,6 +310,9 @@ export class XRPLService {
   /**
    * Verify a signature from an XRPL wallet
    * This proves that the user owns the private key for the claimed address
+   *
+   * NOTE: Uses ripple-keypairs instead of xrpl.verify because xrpl@3.1.0
+   * does not export the verify function despite TypeScript definitions suggesting otherwise.
    */
   verifyWalletSignature(
     message: string,
@@ -317,9 +320,11 @@ export class XRPLService {
     publicKey: string
   ): boolean {
     try {
-      // TypeScript override: xrpl@3.1.0 .d.ts file is incorrect, but verify() exists at runtime
-      // @ts-ignore - Suppressing TS2305/TS2339; function is present in xrpl@3.1.0
-      return verify(message, signature, publicKey);
+      // Convert message to hex format as required by ripple-keypairs
+      const messageHex = Buffer.from(message, 'utf8').toString('hex');
+
+      // Use ripple-keypairs for signature verification
+      return keypairs.verify(messageHex, signature, publicKey);
     } catch (error: any) {
       console.error('Signature verification error:', error);
       return false;

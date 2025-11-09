@@ -143,7 +143,7 @@ Looking forward to learning from this community!`,
     },
   });
 
-  const reply2 = await prisma.post.create({
+  await prisma.post.create({
     data: {
       content: `Great question! For our region, I've had success with:
 - Oats and field peas in winter
@@ -159,7 +159,7 @@ The key is diversity - more species means more ecosystem functions.`,
     },
   });
 
-  const post2 = await prisma.post.create({
+  await prisma.post.create({
     data: {
       title: 'Water Retention Strategies for Dry Seasons',
       content: `With increasingly variable rainfall patterns, I'm looking for proven strategies to improve water retention on farm. What's working for you?`,

@@ -79,13 +79,25 @@ keyPoints String[] @map("key_points")  // Native array type
 2. Navigate to **"Database"** in left sidebar
 3. Scroll to **"Connection string"** section
 4. Select **"URI"** mode (not "Transaction mode")
-5. Copy the connection string:
+5. You'll see TWO connection strings - we need the **Session mode** one
+
+**CRITICAL: Port Selection**
+- **Port 5432** - Direct database connection (use for local development & migrations)
+- **Port 6543** - Connection pooler (use for production/serverless)
+
+6. Copy the **Session mode** connection string (port 5432):
 
 ```
-postgresql://postgres:[YOUR-PASSWORD]@db.xxxxxxxxxxxxx.supabase.co:5432/postgres
+postgresql://postgres.[project-ref]:[YOUR-PASSWORD]@aws-X-region.pooler.supabase.com:5432/postgres
 ```
 
-6. **Replace `[YOUR-PASSWORD]`** with the database password you created in step 1.2
+7. **Replace `[YOUR-PASSWORD]`** with the database password you created in step 1.2
+
+**Why Port 5432 for Migrations:**
+- Prisma migration commands require a direct database connection
+- Port 6543 (pooler) causes migrations to hang because they don't wait for connection pooling
+- Use port 5432 for `db push`, `migrate dev`, and local development
+- Switch to port 6543 for production deployments with high connection volume
 
 ---
 
@@ -109,8 +121,15 @@ Edit `.env` and update the `DATABASE_URL`:
 
 ```env
 # Replace the entire DATABASE_URL line with your Supabase connection string
-DATABASE_URL=postgresql://postgres:your_actual_password@db.abcdefghijklm.supabase.co:5432/postgres
+# CRITICAL: Use quotes and port 5432 (direct connection) for local development
+DATABASE_URL="postgresql://postgres.[project-ref]:your_actual_password@aws-X-region.pooler.supabase.com:5432/postgres"
 ```
+
+**Important Configuration Notes:**
+- ✅ **Always use quotes** around the DATABASE_URL to avoid parsing issues
+- ✅ **Use port 5432** for local development and migrations
+- ✅ Replace `your_actual_password` with your actual database password
+- ✅ Keep the full `postgres.[project-ref]` format from Supabase
 
 **Important Security Notes:**
 - ✅ `.env` is in `.gitignore` (never commit this file)
@@ -135,44 +154,46 @@ yarn install
 
 ## Part 3: Run Database Migration
 
-### 3.1 Generate Prisma Client
+### 3.1 Sync Database Schema (Recommended for Initial Setup)
+
+**For initial migration, use `db push` instead of `migrate dev`:**
 
 ```bash
-npx prisma generate
+npx prisma db push
 ```
 
-This regenerates the Prisma client with PostgreSQL-specific types.
-
-### 3.2 Create Initial Migration
-
-```bash
-npx prisma migrate dev --name init_postgresql
-```
-
-**What this does:**
-1. Connects to your Supabase PostgreSQL database
-2. Creates all tables defined in `schema.prisma`
-3. Creates a migration file in `prisma/migrations/`
-4. Updates `migration_lock.toml` to `provider = "postgresql"`
+**Why `db push` instead of `migrate dev`?**
+- ✅ Works immediately with direct connection (port 5432)
+- ✅ Bypasses migration locking issues
+- ✅ Perfect for initial schema sync
+- ✅ Generates Prisma Client automatically
+- ❌ Doesn't create migration history files (acceptable for initial setup)
 
 **Expected output:**
 ```
 Environment variables loaded from .env
 Prisma schema loaded from prisma/schema.prisma
-Datasource "db": PostgreSQL database "postgres", schema "public" at "db.xxxxx.supabase.co:5432"
+Datasource "db": PostgreSQL database "postgres", schema "public" at "aws-X-region.pooler.supabase.com:5432"
 
-Applying migration `20251108_init_postgresql`
+🚀  Your database is now in sync with your Prisma schema. Done in 2.21s
 
-The following migration(s) have been created and applied from new schema changes:
-
-migrations/
-  └─ 20251108_init_postgresql/
-    └─ migration.sql
-
-Your database is now in sync with your schema.
-
-✔ Generated Prisma Client (v5.x.x) to ./node_modules/@prisma/client in XXXms
+✔ Generated Prisma Client (v6.19.0) to ./node_modules/@prisma/client in 349ms
 ```
+
+**If you see the command hang:**
+- ⚠️ Check you're using **port 5432** (not 6543) in DATABASE_URL
+- ⚠️ Verify your database password is correct
+- ⚠️ Ensure quotes are around the DATABASE_URL in `.env`
+
+### 3.2 Alternative: Create Migration Files (Optional)
+
+If you need migration history for version control:
+
+```bash
+npx prisma migrate dev --name init_postgresql
+```
+
+**Note:** This may hang on port 6543. Always use port 5432 for migrations.
 
 ### 3.3 Seed the Database (Optional)
 
@@ -237,12 +258,22 @@ npm run dev
 
 **Expected output:**
 ```
-Server running on http://0.0.0.0:3000
-Connected to PostgreSQL database
+[HH:MM:SS.MMM] INFO (XXXXX): Connected to database
+[HH:MM:SS.MMM] INFO (XXXXX): Server listening at http://0.0.0.0:3000
+[HH:MM:SS.MMM] INFO (XXXXX): Brother Nature Platform running on http://0.0.0.0:3000
+[HH:MM:SS.MMM] INFO (XXXXX): Environment: development
 ```
+
+**The server will appear to "hang" - this is normal!**
+- ✅ The server is running and listening for requests
+- ✅ Logs will appear as requests are made
+- ✅ Press `Ctrl+C` to stop the server when needed
+- ✅ Changes to files will trigger automatic restart (nodemon)
 
 **Test endpoints:**
 ```bash
+# In a NEW terminal window (server must be running):
+
 # Health check
 curl http://localhost:3000/api/health
 
@@ -301,7 +332,60 @@ Navigate to `WalletChallenge` table - **your challenge should still be there!**
 
 ## Common Issues & Solutions
 
-### Issue 1: "Can't reach database server"
+### Issue 1: Migration Command Hangs (MOST COMMON)
+
+**Symptom:**
+```bash
+npx prisma db push
+# or
+npx prisma migrate dev
+
+# Output shows connection attempt but never completes:
+Datasource "db": PostgreSQL database "postgres", schema "public" at "aws-X-region.pooler.supabase.com:6543"
+# ...then hangs indefinitely
+```
+
+**Root Cause:**
+You're using **port 6543** (connection pooler) instead of **port 5432** (direct connection).
+
+**Solutions:**
+
+**1. Fix your DATABASE_URL in `.env`:**
+```env
+# WRONG - will hang:
+DATABASE_URL="postgresql://postgres.[ref]:pass@host.supabase.com:6543/postgres"
+
+# CORRECT - works immediately:
+DATABASE_URL="postgresql://postgres.[ref]:pass@host.supabase.com:5432/postgres"
+```
+
+**2. Verify the port:**
+```bash
+# Check your current DATABASE_URL
+grep DATABASE_URL .env
+
+# Should show :5432, NOT :6543
+```
+
+**3. Test connection:**
+```bash
+# macOS/Linux - verify port 5432 is reachable
+nc -vz aws-X-region.pooler.supabase.com 5432
+
+# Should output: "Connection to ... port 5432 [tcp/*] succeeded!"
+```
+
+**Why This Happens:**
+- Port 6543 is the Supabase connection pooler (pgbouncer)
+- Prisma migrations don't work with connection poolers
+- Port 5432 is the direct PostgreSQL connection
+- Always use port 5432 for local development and migrations
+
+**When to Use Each Port:**
+- ✅ **Port 5432**: Local dev, migrations, Prisma Studio, `db push`, `migrate dev`
+- ✅ **Port 6543**: Production deployments, serverless functions, high concurrency
+
+### Issue 2: "Can't reach database server"
 
 **Symptom:**
 ```
@@ -314,7 +398,23 @@ Error: Can't reach database server at `db.xxxxx.supabase.co:5432`
 3. **Check Supabase status** - https://status.supabase.com
 4. **Firewall/VPN** - Some networks block port 5432
 
-### Issue 2: "Password authentication failed"
+### Issue 3: DATABASE_URL Not Quoted
+
+**Symptom:**
+Database URL appears truncated or malformed in terminal output, or connection fails with parsing errors.
+
+**Solution:**
+Always use quotes around DATABASE_URL in `.env`:
+
+```env
+# WRONG - no quotes:
+DATABASE_URL=postgresql://postgres:pass@host.supabase.com:5432/postgres
+
+# CORRECT - with quotes:
+DATABASE_URL="postgresql://postgres:pass@host.supabase.com:5432/postgres"
+```
+
+### Issue 4: "Password authentication failed"
 
 **Symptom:**
 ```
@@ -322,13 +422,14 @@ Error: password authentication failed for user "postgres"
 ```
 
 **Solutions:**
-1. **Reset database password:**
+1. **Verify quotes around DATABASE_URL** - See Issue 3 above
+2. **Reset database password:**
    - Supabase Dashboard → Project Settings → Database
    - Click "Reset database password"
-   - Update `.env` with new password
-2. **Check for special characters** - Ensure password is URL-encoded if it contains special chars
+   - Update `.env` with new password (in quotes)
+3. **Check for special characters** - Ensure password is URL-encoded if it contains special chars
 
-### Issue 3: Migration Already Applied
+### Issue 5: Migration Already Applied
 
 **Symptom:**
 ```
@@ -338,7 +439,7 @@ Error: Migration `20251108_init_postgresql` has already been applied
 **Solution:**
 This is fine! It means your database is already up-to-date. Skip the migration step.
 
-### Issue 4: "Table already exists"
+### Issue 6: "Table already exists"
 
 **Symptom:**
 ```
@@ -347,13 +448,19 @@ Error: Table 'User' already exists
 
 **Solutions:**
 
-**Option A: Reset database (DEVELOPMENT ONLY)**
+**Option A: Use db push (recommended)**
+```bash
+npx prisma db push
+```
+This syncs schema without migration files and works even if tables exist.
+
+**Option B: Reset database (DEVELOPMENT ONLY)**
 ```bash
 npx prisma migrate reset
 ```
 ⚠️ **WARNING:** This deletes all data!
 
-**Option B: Mark migration as applied**
+**Option C: Mark migration as applied**
 ```bash
 npx prisma migrate resolve --applied "20251108_init_postgresql"
 ```

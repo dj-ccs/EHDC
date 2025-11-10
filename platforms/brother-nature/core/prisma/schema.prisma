@@ -27,6 +27,10 @@ model User {
   // XRPL Integration
   xrplWalletAddress String?  @unique
 
+  // XPR Master Identity Foundation (ADR-0701, ADR-0702)
+  encryptedKeyBundle String?   // Client-side encrypted multi-chain key bundle (AES-256-GCM)
+  keyDerivationPath  String?   // BIP-44 derivation metadata (JSON)
+
   // Roles & Permissions
   role              UserRole @default(USER)
   isVerified        Boolean  @default(false)

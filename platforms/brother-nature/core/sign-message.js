@@ -15,7 +15,8 @@
 
 const { Wallet } = require('xrpl');
 const secp256k1 = require('tiny-secp256k1');
-const crypto = require('crypto');
+// SonarCloud Fix (S7772): Explicitly use the 'node:' protocol for built-in modules
+const crypto = require('node:crypto');
 
 // Get arguments from command line
 const SECRET = process.argv[2];

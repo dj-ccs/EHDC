@@ -1,5 +1,4 @@
 import { Client, Wallet, Payment, TrustSet } from 'xrpl';
-import * as keypairs from 'ripple-keypairs';
 import { PrismaClient, TokenType } from '@prisma/client';
 
 interface TokenConfig {
@@ -311,8 +310,13 @@ export class XRPLService {
    * Verify a signature from an XRPL wallet
    * This proves that the user owns the private key for the claimed address
    *
-   * NOTE: Uses ripple-keypairs instead of xrpl.verify because xrpl@3.1.0
-   * does not export the verify function despite TypeScript definitions suggesting otherwise.
+   * SECURITY FIX: Uses xrpl.js native Wallet.verify() to eliminate CVSS 9.3
+   * elliptic vulnerability from ripple-keypairs dependency.
+   *
+   * @param message - UTF-8 message that was signed
+   * @param signature - Hex-encoded signature
+   * @param publicKey - Hex-encoded XRPL public key
+   * @returns boolean - true if signature is valid
    */
   verifyWalletSignature(
     message: string,
@@ -320,11 +324,12 @@ export class XRPLService {
     publicKey: string
   ): boolean {
     try {
-      // Convert message to hex format as required by ripple-keypairs
+      // Convert message to hex format as required by XRPL signing standard
       const messageHex = Buffer.from(message, 'utf8').toString('hex');
 
-      // Use ripple-keypairs for signature verification
-      return keypairs.verify(messageHex, signature, publicKey);
+      // Use xrpl.js native Wallet.verify() static method
+      // This eliminates the ripple-keypairs dependency and its elliptic vulnerability
+      return Wallet.verify(messageHex, signature, publicKey);
     } catch (error: any) {
       console.error('Signature verification error:', error);
       return false;

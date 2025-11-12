@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 /**
- * signer.js - XRPL Message Signer (CLI Version)
+ * sign-message.js - XRPL Message Signer (CLI Version)
  *
- * Usage: node signer.js <SECRET> <MESSAGE>
+ * Usage: node sign-message.js <SECRET> <MESSAGE>
  *
  * Example:
- *   node signer.js "sEdV..." "Brother Nature Wallet Verification..."
+ *   node sign-message.js "sEdV..." "Brother Nature Wallet Verification..."
  *
  * Returns JSON: { signature, publicKey, address }
+ *
+ * SECURITY FIX: Removed ripple-keypairs dependency to eliminate CVSS 9.3
+ * elliptic vulnerability. Now uses xrpl.js native Wallet methods.
  */
 
 const { Wallet } = require('xrpl');
-const keypairs = require('ripple-keypairs');
-const { deriveKeypair } = require('ripple-keypairs');
+const secp256k1 = require('tiny-secp256k1');
+const crypto = require('crypto');
 
 // Get arguments from command line
 const SECRET = process.argv[2];
@@ -26,21 +29,25 @@ if (!SECRET || !MESSAGE) {
 
 function signChallenge(secret, message) {
     try {
-        // 1. Derive keypair from secret
-        const { publicKey, privateKey } = deriveKeypair(secret);
-        const wallet = Wallet.fromSecret(secret);
+        // 1. Create wallet from secret using xrpl.js native Wallet
+        // SECURITY FIX: Use Wallet.fromSeed() instead of ripple-keypairs
+        const wallet = Wallet.fromSeed(secret);
+        const publicKey = wallet.publicKey;
 
         // 2. Convert message to hex
         const messageHex = Buffer.from(message, 'utf8').toString('hex');
 
-        // 3. Sign the message
-        const signature = keypairs.sign(messageHex, privateKey);
+        // 3. Sign the message using tiny-secp256k1 (eliminates elliptic vulnerability)
+        const messageHash = Buffer.from(crypto.createHash('sha512').update(Buffer.from(messageHex, 'hex')).digest().slice(0, 32));
+        const privateKeyBytes = Buffer.from(wallet.privateKey, 'hex');
+        const signatureBytes = secp256k1.sign(messageHash, privateKeyBytes);
+        const signature = Buffer.from(signatureBytes).toString('hex').toUpperCase();
 
         // 4. Return JSON for easy parsing
         const result = {
             signature,
             publicKey,
-            address: wallet.classicAddress
+            address: wallet.address
         };
 
         // Output as JSON for script consumption

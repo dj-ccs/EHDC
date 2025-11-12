@@ -7,7 +7,7 @@ services:
     container_name: brother-nature-db
     environment:
       POSTGRES_USER: brother_nature
-      POSTGRES_PASSWORD: development_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-development_password}
       POSTGRES_DB: brother_nature_dev
     ports:
       - "5432:5432"
@@ -46,11 +46,11 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: development
-      DATABASE_URL: postgresql://brother_nature:development_password@postgres:5432/brother_nature_dev
+      DATABASE_URL: postgresql://brother_nature:${POSTGRES_PASSWORD:-development_password}@postgres:5432/brother_nature_dev
       REDIS_HOST: redis
       REDIS_PORT: 6379
       PORT: 3000
-      JWT_SECRET: development-jwt-secret-change-in-production
+      JWT_SECRET: ${JWT_SECRET:-development-jwt-secret-change-in-production}
       LOG_LEVEL: debug
     ports:
       - "3000:3000"

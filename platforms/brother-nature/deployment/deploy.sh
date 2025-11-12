@@ -19,7 +19,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Step 1: Updating code...${NC}"
-if [ ! -d "$DEPLOY_PATH" ]; then
+if [[ ! -d "$DEPLOY_PATH" ]]; then
     sudo mkdir -p $DEPLOY_PATH
     sudo chown $USER:$USER $DEPLOY_PATH
     git clone $REPO_URL $DEPLOY_PATH

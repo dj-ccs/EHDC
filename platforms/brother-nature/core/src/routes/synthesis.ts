@@ -79,6 +79,7 @@ export default async function synthesisRoutes(fastify: FastifyInstance) {
         let rewardTxHash: string | null = null;
         try {
           const xrplService = new XRPLService(fastify.prisma);
+          await xrplService.initialize(); // Initialize with vault-sourced secrets
           rewardTxHash = await xrplService.rewardVerifiedContribution(
             threadRoot.authorId,
             body.threadRootId,

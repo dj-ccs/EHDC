@@ -1,5 +1,6 @@
 import { Client, Wallet, Payment, TrustSet } from 'xrpl';
 import { PrismaClient, TokenType } from '@prisma/client';
+import { getSecret } from '../utils/vault_client';
 
 interface TokenConfig {
   currency: string;
@@ -17,8 +18,9 @@ export class XRPLService {
   private client: Client;
   private prisma: PrismaClient;
   private isConnected: boolean = false;
+  private isInitialized: boolean = false;
 
-  // Token configuration from environment
+  // Token configuration from vault (secure secret management)
   private tokenConfig: TokenDistribution;
 
   constructor(prisma: PrismaClient) {
@@ -27,24 +29,76 @@ export class XRPLService {
     const serverUrl = process.env.XRPL_SERVER || 'wss://s.altnet.rippletest.net:51233';
     this.client = new Client(serverUrl);
 
-    // Initialize token configurations
+    // Token config will be loaded securely via initialize()
+    // This prevents direct process.env access for critical secrets
     this.tokenConfig = {
-      EXP: {
-        currency: process.env.EXPLORER_TOKEN_CURRENCY || 'EXP',
-        issuerAddress: process.env.XRPL_ISSUER_ADDRESS || '',
-        issuerSecret: process.env.XRPL_ISSUER_SECRET || '',
-      },
-      RGN: {
-        currency: process.env.REGEN_TOKEN_CURRENCY || 'RGN',
-        issuerAddress: process.env.XRPL_ISSUER_ADDRESS || '',
-        issuerSecret: process.env.XRPL_ISSUER_SECRET || '',
-      },
-      GRD: {
-        currency: process.env.GUARDIAN_TOKEN_CURRENCY || 'GRD',
-        issuerAddress: process.env.XRPL_ISSUER_ADDRESS || '',
-        issuerSecret: process.env.XRPL_ISSUER_SECRET || '',
-      },
+      EXP: { currency: '', issuerAddress: '', issuerSecret: '' },
+      RGN: { currency: '', issuerAddress: '', issuerSecret: '' },
+      GRD: { currency: '', issuerAddress: '', issuerSecret: '' },
     };
+  }
+
+  /**
+   * Initialize the XRPL service with secure secret loading from vault
+   *
+   * SECURITY: This method fetches critical secrets (XRPL_ISSUER_SECRET) from
+   * the vault instead of directly from process.env, implementing Enhancement 3.
+   *
+   * MUST be called after construction and before any token operations.
+   *
+   * @throws Error if secrets cannot be loaded from vault
+   */
+  async initialize(): Promise<void> {
+    if (this.isInitialized) {
+      return; // Already initialized
+    }
+
+    try {
+      // Fetch critical issuer secret from vault (Enhancement 3: Secure Secret Management)
+      const issuerSecret = await getSecret('XRPL_ISSUER_SECRET');
+      const issuerAddress = await getSecret('XRPL_ISSUER_ADDRESS');
+
+      // Non-critical configuration can still come from process.env
+      const explorerCurrency = process.env.EXPLORER_TOKEN_CURRENCY || 'EXP';
+      const regenCurrency = process.env.REGEN_TOKEN_CURRENCY || 'RGN';
+      const guardianCurrency = process.env.GUARDIAN_TOKEN_CURRENCY || 'GRD';
+
+      // Initialize token configurations with vault-sourced secrets
+      this.tokenConfig = {
+        EXP: {
+          currency: explorerCurrency,
+          issuerAddress: issuerAddress,
+          issuerSecret: issuerSecret,
+        },
+        RGN: {
+          currency: regenCurrency,
+          issuerAddress: issuerAddress,
+          issuerSecret: issuerSecret,
+        },
+        GRD: {
+          currency: guardianCurrency,
+          issuerAddress: issuerAddress,
+          issuerSecret: issuerSecret,
+        },
+      };
+
+      this.isInitialized = true;
+      console.log('[XRPLService] Initialized with vault-sourced secrets (Enhancement 3)');
+    } catch (error: any) {
+      throw new Error(`Failed to initialize XRPLService: ${error.message}`);
+    }
+  }
+
+  /**
+   * Ensure the service is initialized before performing operations
+   * @throws Error if service is not initialized
+   */
+  private ensureInitialized(): void {
+    if (!this.isInitialized) {
+      throw new Error(
+        'XRPLService not initialized. Call initialize() before using the service.'
+      );
+    }
   }
 
   /**
@@ -86,6 +140,7 @@ export class XRPLService {
     userWallet: Wallet,
     tokenType: TokenType
   ): Promise<string> {
+    this.ensureInitialized();
     await this.connect();
 
     const config = this.getTokenConfig(tokenType);
@@ -131,6 +186,7 @@ export class XRPLService {
     userId: string,
     postId?: string
   ): Promise<string> {
+    this.ensureInitialized();
     await this.connect();
 
     const config = this.getTokenConfig(tokenType);
@@ -214,6 +270,7 @@ export class XRPLService {
     accountAddress: string,
     tokenType: TokenType
   ): Promise<string> {
+    this.ensureInitialized();
     await this.connect();
 
     const config = this.getTokenConfig(tokenType);

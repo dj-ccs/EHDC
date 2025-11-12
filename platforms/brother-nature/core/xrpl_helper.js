@@ -16,11 +16,31 @@ const { Wallet } = require("xrpl");
 const secp256k1 = require("tiny-secp256k1");
 
 // -----------------------------
-// CONFIG - edit your JWT + testnet wallet
+// CONFIG - Read from environment variables (ADR-0002 compliant)
 // -----------------------------
-const JWT_TOKEN_FRESH = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtaHI4a2RsMDAwMDE2YWt2eXNpbDJvYXEiLCJlbWFpbCI6InN0ZXdhcmRAYnJvdGhlcm5hdHVyZS5vcmciLCJ1c2VybmFtZSI6InN0ZXdhcmQxIiwicm9sZSI6IlNURVdBUkQiLCJpYXQiOjE3NjI2NzQ3NTQsImV4cCI6MTc2MzI3OTU1NH0.SaYCQwfA34smf_YTieUMHX_snqoUARN11wpYPNsUKHY";
-const TEST_ADDRESS = "r9txmYFfUfzgzfdMUdeZ1Y8etdWmxEayRf";
-const TEST_SECRET = "sEdT91KZ5fvvLyxKzXAFYgHfNiVQ5hv";
+// SECURITY FIX: Externalized all secrets to environment variables
+// Set these in your shell before running:
+//   export TEST_JWT_TOKEN="your-jwt-token"
+//   export TEST_XRPL_ADDRESS="your-xrpl-address"
+//   export TEST_XRPL_SECRET="your-xrpl-secret"
+
+const JWT_TOKEN_FRESH = process.env.TEST_JWT_TOKEN;
+const TEST_ADDRESS = process.env.TEST_XRPL_ADDRESS;
+const TEST_SECRET = process.env.TEST_XRPL_SECRET;
+
+// Validate required environment variables
+if (!JWT_TOKEN_FRESH || !TEST_ADDRESS || !TEST_SECRET) {
+  console.error("❌ Missing required environment variables:");
+  console.error("  - TEST_JWT_TOKEN");
+  console.error("  - TEST_XRPL_ADDRESS");
+  console.error("  - TEST_XRPL_SECRET");
+  console.error("\nSet these environment variables before running this script.");
+  console.error("Example:");
+  console.error('  export TEST_JWT_TOKEN="eyJhbGci..."');
+  console.error('  export TEST_XRPL_ADDRESS="rYourAddress..."');
+  console.error('  export TEST_XRPL_SECRET="sYourSecret..."');
+  process.exit(1);
+}
 
 // -----------------------------
 // 1. REQUEST CHALLENGE

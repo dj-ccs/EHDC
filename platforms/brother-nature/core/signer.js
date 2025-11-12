@@ -1,9 +1,12 @@
-// signer.js - THE DEFINITIVE FINAL VERSION
+// signer.js - XRPL Message Signer (SECURITY HARDENED VERSION)
+//
+// SECURITY FIX: Removed ripple-keypairs dependency to eliminate CVSS 9.3
+// elliptic vulnerability. Now uses xrpl.js native Wallet methods.
 
 // Import the necessary utilities
 const { Wallet } = require('xrpl');
-const keypairs = require('ripple-keypairs'); 
-const { deriveKeypair } = require('ripple-keypairs'); // We will use this one!
+const secp256k1 = require('tiny-secp256k1');
+const crypto = require('crypto');
 
 // !!! REPLACE THESE PLACEHOLDERS !!!
 const TESTNET_SECRET = 'sEdVHMRPifgyXquSKsh7R2271um6qcr'; // Your Secret from Phase 1
@@ -11,21 +14,23 @@ const MESSAGE_FROM_SERVER = 'Brother Nature Wallet Verification\n\nPlease sign t
 // !!! ----------------------------- !!!
 
 function signChallenge(secret, message) {
-    // 1. Convert the human-readable secret (sEd...) into the private key (hex format)
-    // deriveKeypair handles the complex sEd... to hex conversion
-    const { publicKey, privateKey } = deriveKeypair(secret); 
-    const wallet = Wallet.fromSecret(secret); // Used only to confirm address/public key integrity
-    
-    // 2. Hash the message (XRPL requires the message to be hashed before signing)
-    // The keypairs utility expects a hex-encoded message or it performs its own hashing.
+    // 1. Create wallet from secret using xrpl.js native Wallet
+    // SECURITY FIX: Use Wallet.fromSeed() instead of ripple-keypairs
+    const wallet = Wallet.fromSeed(secret);
+    const publicKey = wallet.publicKey;
+
+    // 2. Convert message to hex
     const messageHex = Buffer.from(message, 'utf8').toString('hex');
-    
-    // 3. Use the correct utility function for signing raw data with the raw private key
-    const signature = keypairs.sign(messageHex, privateKey); // <-- NOW USING raw privateKey
+
+    // 3. Sign the message using tiny-secp256k1 (eliminates elliptic vulnerability)
+    const messageHash = Buffer.from(crypto.createHash('sha512').update(Buffer.from(messageHex, 'hex')).digest().slice(0, 32));
+    const privateKeyBytes = Buffer.from(wallet.privateKey, 'hex');
+    const signatureBytes = secp256k1.sign(messageHash, privateKeyBytes);
+    const signature = Buffer.from(signatureBytes).toString('hex').toUpperCase();
 
     console.log("--- SIGNING RESULT ---");
-    console.log(`Address:    ${wallet.classicAddress}`);
-    console.log(`Public Key: ${publicKey}`); // Public key from derivation
+    console.log(`Address:    ${wallet.address}`);
+    console.log(`Public Key: ${publicKey}`);
     console.log(`Signature:  ${signature}`);
     console.log("----------------------");
 

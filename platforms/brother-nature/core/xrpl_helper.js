@@ -4,20 +4,43 @@
  * One-shot XRPL Wallet Challenge Helper
  * MacOS Intel compatible
  * Usage: node xrpl_helper.js
+ *
+ * SECURITY FIX: Removed ripple-keypairs dependency to eliminate CVSS 9.3
+ * elliptic vulnerability. Now uses xrpl.js native Wallet methods.
  */
 
 const { execSync } = require("child_process");
 const fetch = require("node-fetch"); // npm i node-fetch@2
 const fs = require("fs");
-const keypairs = require("ripple-keypairs");
 const { Wallet } = require("xrpl");
+const secp256k1 = require("tiny-secp256k1");
 
 // -----------------------------
-// CONFIG - edit your JWT + testnet wallet
+// CONFIG - Read from environment variables (ADR-0002 compliant)
 // -----------------------------
-const JWT_TOKEN_FRESH = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6ImNtaHI4a2RsMDAwMDE2YWt2eXNpbDJvYXEiLCJlbWFpbCI6InN0ZXdhcmRAYnJvdGhlcm5hdHVyZS5vcmciLCJ1c2VybmFtZSI6InN0ZXdhcmQxIiwicm9sZSI6IlNURVdBUkQiLCJpYXQiOjE3NjI2NzQ3NTQsImV4cCI6MTc2MzI3OTU1NH0.SaYCQwfA34smf_YTieUMHX_snqoUARN11wpYPNsUKHY";
-const TEST_ADDRESS = "r9txmYFfUfzgzfdMUdeZ1Y8etdWmxEayRf";
-const TEST_SECRET = "sEdT91KZ5fvvLyxKzXAFYgHfNiVQ5hv";
+// SECURITY FIX: Externalized all secrets to environment variables
+// Set these in your shell before running:
+//   export TEST_JWT_TOKEN="your-jwt-token"
+//   export TEST_XRPL_ADDRESS="your-xrpl-address"
+//   export TEST_XRPL_SECRET="your-xrpl-secret"
+
+const JWT_TOKEN_FRESH = process.env.TEST_JWT_TOKEN;
+const TEST_ADDRESS = process.env.TEST_XRPL_ADDRESS;
+const TEST_SECRET = process.env.TEST_XRPL_SECRET;
+
+// Validate required environment variables
+if (!JWT_TOKEN_FRESH || !TEST_ADDRESS || !TEST_SECRET) {
+  console.error("❌ Missing required environment variables:");
+  console.error("  - TEST_JWT_TOKEN");
+  console.error("  - TEST_XRPL_ADDRESS");
+  console.error("  - TEST_XRPL_SECRET");
+  console.error("\nSet these environment variables before running this script.");
+  console.error("Example:");
+  console.error('  export TEST_JWT_TOKEN="eyJhbGci..."');
+  console.error('  export TEST_XRPL_ADDRESS="rYourAddress..."');
+  console.error('  export TEST_XRPL_SECRET="sYourSecret..."');
+  process.exit(1);
+}
 
 // -----------------------------
 // 1. REQUEST CHALLENGE
@@ -57,12 +80,19 @@ const TEST_SECRET = "sEdT91KZ5fvvLyxKzXAFYgHfNiVQ5hv";
   // -----------------------------
   console.log("--- 2. SIGNING MESSAGE ---");
 
-  const { privateKey, publicKey } = keypairs.deriveKeypair(TEST_SECRET);
+  // SECURITY FIX: Use xrpl.js native Wallet instead of ripple-keypairs
+  const wallet = Wallet.fromSeed(TEST_SECRET);
+  const publicKey = wallet.publicKey;
   const messageHex = Buffer.from(MESSAGE, "utf8").toString("hex");
-  const signature = keypairs.sign(messageHex, privateKey);
+
+  // Use tiny-secp256k1 for signing (eliminates ripple-keypairs/elliptic vulnerability)
+  const messageHash = Buffer.from(require('crypto').createHash('sha512').update(Buffer.from(messageHex, 'hex')).digest().slice(0, 32));
+  const privateKeyBytes = Buffer.from(wallet.privateKey, 'hex');
+  const signatureBytes = secp256k1.sign(messageHash, privateKeyBytes);
+  const signature = Buffer.from(signatureBytes).toString('hex').toUpperCase();
 
   console.log("✅ Signature generated");
-  console.log(`Address:    ${TEST_ADDRESS}`);
+  console.log(`Address:    ${wallet.address}`);
   console.log(`Public Key: ${publicKey}`);
   console.log(`Signature:  ${signature}`);
 

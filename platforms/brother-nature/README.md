@@ -162,6 +162,23 @@ AI_MODEL=claude-3.5-sonnet
 
 **Important**: Replace all placeholder values with actual credentials before deploying to production.
 
+### Running Test Utilities
+
+The platform includes test utilities for XRPL wallet verification (`xrpl_helper.js`, `sign-message.js`, `signer.js`). These require additional environment variables:
+
+```bash
+# Set environment variables before running test scripts
+export TEST_JWT_TOKEN="your-jwt-token-from-login"
+export TEST_XRPL_ADDRESS="rYourTestnetAddressHere"
+export TEST_XRPL_SECRET="sYourTestnetSecretHere"
+
+# Run wallet verification test
+cd platforms/brother-nature/core
+node xrpl_helper.js
+```
+
+**Security Note**: These test utilities have been hardened per ADR-0002 (Secure Secret Management). Never commit actual secrets to source control. All credentials must be provided via environment variables.
+
 ## API Documentation
 
 ### Authentication (`/api/auth`)

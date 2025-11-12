@@ -13,16 +13,19 @@
  * - Platform cannot decrypt (no passphrase access)
  *
  * Dependencies:
- *   npm install bip39 bip32 crypto-js ripple-keypairs stellar-sdk ethers tiny-secp256k1
+ *   npm install bip39 bip32 crypto-js stellar-sdk ethers tiny-secp256k1 xrpl
  *
  * Related: ADR-0701, ADR-0702
+ *
+ * SECURITY FIX: Removed ripple-keypairs dependency to eliminate CVSS 9.3
+ * elliptic vulnerability. Now uses xrpl.js native Wallet methods.
  */
 
 const bip39 = require('bip39');
 const { BIP32Factory } = require('bip32');
 const ecc = require('tiny-secp256k1');
 const CryptoJS = require('crypto-js');
-const rippleKeypairs = require('ripple-keypairs');
+const { Wallet: XRPLWallet } = require('xrpl');
 const { Keypair: StellarKeypair } = require('stellar-sdk');
 const { Wallet: EthersWallet } = require('ethers');
 
@@ -70,10 +73,9 @@ async function deriveMultiChainKeys(mnemonic) {
   const root = bip32.fromSeed(seed);
 
   // 3. Derive XRPL key (m/44'/144'/0'/0/0)
+  // SECURITY FIX: Use xrpl.js native Wallet.fromEntropy() instead of ripple-keypairs
   const xrplNode = root.derivePath("m/44'/144'/0'/0/0");
-  const xrplKeypair = rippleKeypairs.deriveKeypair(
-    xrplNode.privateKey.toString('hex')
-  );
+  const xrplWallet = XRPLWallet.fromEntropy(xrplNode.privateKey);
 
   // 4. Derive Metal L2 key (m/44'/60'/0'/0/0, EVM)
   const metalNode = root.derivePath("m/44'/60'/0'/0/0");
@@ -98,9 +100,9 @@ async function deriveMultiChainKeys(mnemonic) {
     created_at: new Date().toISOString(),
     derived_keys: {
       xrpl: {
-        seed: xrplKeypair.privateKey,
-        address: xrplKeypair.address,
-        public_key: xrplKeypair.publicKey,
+        seed: xrplWallet.seed,
+        address: xrplWallet.address,
+        public_key: xrplWallet.publicKey,
         derivation_path: "m/44'/144'/0'/0/0"
       },
       metal_l2: {
@@ -356,17 +358,21 @@ function decryptKeyBundle(encryptedBundle, userPassphrase) {
  * @returns {string} Signed transaction blob (hex)
  */
 function signXRPLTransaction(plaintextBundle, transaction) {
-  // 1. Extract XRPL private key
+  // 1. Extract XRPL seed
   const xrplSeed = plaintextBundle.derived_keys.xrpl.seed;
 
-  // 2. Derive keypair from seed
-  const keypair = rippleKeypairs.deriveKeypair(xrplSeed);
+  // 2. Create wallet from seed using xrpl.js native Wallet
+  // SECURITY FIX: Use XRPLWallet.fromSeed() instead of ripple-keypairs
+  const wallet = XRPLWallet.fromSeed(xrplSeed);
 
-  // 3. Sign transaction (simplified - in production use xrpl library)
+  // 3. Sign transaction (simplified - in production use xrpl library's sign method)
   console.log('✍️  Transaction Signed (XRPL):');
-  console.log('  From Address:', plaintextBundle.derived_keys.xrpl.address);
+  console.log('  From Address:', wallet.address);
   console.log('  Transaction Type:', transaction.TransactionType);
   console.log('');
+
+  // Note: In production, use wallet.sign(transaction) for actual signing
+  // const signedTx = wallet.sign(transaction);
 
   // 4. IMPORTANT: Purge keys from memory after signing
   purgeKeysFromMemory(plaintextBundle);

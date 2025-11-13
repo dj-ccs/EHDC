@@ -26,7 +26,7 @@
     "@apollo/server": "^4.10.0",
     "@fastify/cors": "^8.4.2",
     "@fastify/helmet": "^11.1.1",
-    "@fastify/jwt": "^9.0.2",
+    "@fastify/jwt": "^9.1.0",
     "@fastify/multipart": "^8.1.0",
     "@fastify/rate-limit": "^9.1.0",
     "@fastify/static": "^7.0.0",

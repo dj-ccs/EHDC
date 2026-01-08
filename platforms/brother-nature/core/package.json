@@ -30,7 +30,7 @@
     "@fastify/multipart": "^8.1.0",
     "@fastify/rate-limit": "^9.1.0",
     "@fastify/static": "^7.0.0",
-    "@prisma/client": "^6.19.0",
+    "@prisma/client": "^6.19.1",
     "bcrypt": "^6.0.0",
     "bip32": "^4.0.0",
     "bip39": "^3.1.0",
